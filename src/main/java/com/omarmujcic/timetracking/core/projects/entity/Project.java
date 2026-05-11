@@ -1,14 +1,11 @@
-package com.omarmujcic.timetracking.core.timetracking.entity;
+package com.omarmujcic.timetracking.core.projects.entity;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import com.omarmujcic.timetracking.core.auth.entity.User;
-import com.omarmujcic.timetracking.core.projects.entity.Project;
-import com.omarmujcic.timetracking.core.projects.entity.Task;
 import com.omarmujcic.timetracking.core.workspace.entity.Organization;
-import com.omarmujcic.timetracking.core.workspace.entity.WorkspaceType;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -24,52 +21,35 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "time_entries")
+@Table(name = "projects")
 @Getter
 @Setter
 @NoArgsConstructor
-public class TimeEntry {
+public class Project {
 
     @Id
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
     private User user;
-
-    @Column(name = "project_name", nullable = false, length = 160)
-    private String projectName;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "workspace_type", length = 20)
-    private WorkspaceType workspaceType = WorkspaceType.PERSONAL;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "organization_id")
     private Organization organization;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "project_id")
-    private Project project;
+    @Column(nullable = false, length = 160)
+    private String name;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "task_id")
-    private Task task;
-
-    @Column(length = 500)
-    private String description;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ProjectStatus status;
 
     @Column(name = "hourly_rate", nullable = false, precision = 10, scale = 2)
     private BigDecimal hourlyRate;
 
     @Column(nullable = false, length = 3)
     private String currency;
-
-    @Column(name = "started_at", nullable = false)
-    private OffsetDateTime startedAt;
-
-    @Column(name = "ended_at")
-    private OffsetDateTime endedAt;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;

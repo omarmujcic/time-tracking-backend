@@ -15,7 +15,10 @@ public class TimeEntryResponseDTO {
     private UUID userId;
     private String username;
     private String displayName;
+    private UUID projectId;
     private String projectName;
+    private UUID taskId;
+    private String taskName;
     private String description;
     private BigDecimal hourlyRate;
     private String currency;

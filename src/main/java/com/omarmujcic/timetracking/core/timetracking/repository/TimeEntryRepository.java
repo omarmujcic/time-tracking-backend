@@ -13,10 +13,16 @@ public interface TimeEntryRepository extends JpaRepository<TimeEntry, UUID> {
 
     List<TimeEntry> findByUserIdOrderByStartedAtDesc(UUID userId);
 
+    List<TimeEntry> findByOrganizationIdOrderByStartedAtDesc(UUID organizationId);
+
     @Query("select entry from TimeEntry entry join fetch entry.user order by entry.startedAt desc")
     List<TimeEntry> findAllWithUserOrderByStartedAtDesc();
 
     Optional<TimeEntry> findByIdAndUserId(UUID id, UUID userId);
 
     Optional<TimeEntry> findByUserIdAndEndedAtIsNull(UUID userId);
+
+    boolean existsByProjectId(UUID projectId);
+
+    boolean existsByTaskId(UUID taskId);
 }

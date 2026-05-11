@@ -2,10 +2,10 @@ package com.omarmujcic.timetracking.core.timetracking.dto;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -15,9 +15,12 @@ import lombok.Setter;
 @Setter
 public class UpdateTimeEntryRequestDTO {
 
-    @NotBlank
     @Size(max = 160)
     private String projectName;
+
+    private UUID projectId;
+
+    private UUID taskId;
 
     @Size(max = 500)
     private String description;

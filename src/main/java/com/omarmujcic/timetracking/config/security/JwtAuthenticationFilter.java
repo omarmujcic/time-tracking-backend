@@ -2,6 +2,7 @@ package com.omarmujcic.timetracking.config.security;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.UUID;
 
 import org.jspecify.annotations.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -33,9 +34,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String authHeader = request.getHeader("Authorization");
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String username = jwtService.getValidSubject(authHeader.substring(7));
-            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                userRepository.findByUsernameIgnoreCase(username).ifPresent(user -> {
+            String subject = jwtService.getValidSubject(authHeader.substring(7));
+            if (subject != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                findUser(subject).ifPresent(user -> {
                     UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         user,
                         null,
@@ -47,5 +48,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private java.util.Optional<com.omarmujcic.timetracking.core.auth.entity.User> findUser(String subject) {
+        try {
+            return userRepository.findById(UUID.fromString(subject));
+        } catch (IllegalArgumentException exception) {
+            return userRepository.findByUsernameIgnoreCase(subject);
+        }
     }
 }
