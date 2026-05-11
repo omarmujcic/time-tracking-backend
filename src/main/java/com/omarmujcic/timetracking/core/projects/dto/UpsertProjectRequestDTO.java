@@ -1,28 +1,28 @@
-package com.omarmujcic.timetracking.core.timetracking.dto;
+package com.omarmujcic.timetracking.core.projects.dto;
 
 import java.math.BigDecimal;
-import java.util.UUID;
+
+import com.omarmujcic.timetracking.core.projects.entity.ProjectStatus;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
 @Getter
 @Setter
-public class StartTimerRequestDTO {
-
+public class UpsertProjectRequestDTO {
+    @NotBlank
     @Size(max = 160)
-    private String projectName;
+    private String name;
 
-    private UUID projectId;
+    @NotNull
+    private ProjectStatus status;
 
-    private UUID taskId;
-
-    @Size(max = 500)
-    private String description;
-
+    @NotNull
     @DecimalMin(value = "0.01")
     @Digits(integer = 8, fraction = 2)
     private BigDecimal hourlyRate;

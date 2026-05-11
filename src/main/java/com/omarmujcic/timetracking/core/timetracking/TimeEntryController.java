@@ -40,9 +40,11 @@ public class TimeEntryController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM") YearMonth month,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate day,
             @RequestParam(required = false) String project,
-            @RequestParam(required = false) UUID userId
+            @RequestParam(required = false) UUID userId,
+            @RequestParam(required = false) List<String> projectNames,
+            @RequestParam(required = false) List<UUID> userIds
     ) {
-        return timeEntryService.list(user, month, day, project, userId);
+        return timeEntryService.list(user, month, day, project, userId, projectNames, userIds);
     }
 
     @GetMapping("/summary")
@@ -51,9 +53,11 @@ public class TimeEntryController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM") YearMonth month,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate day,
             @RequestParam(required = false) String project,
-            @RequestParam(required = false) UUID userId
+            @RequestParam(required = false) UUID userId,
+            @RequestParam(required = false) List<String> projectNames,
+            @RequestParam(required = false) List<UUID> userIds
     ) {
-        return timeEntryService.summary(user, month, day, project, userId);
+        return timeEntryService.summary(user, month, day, project, userId, projectNames, userIds);
     }
 
     @PostMapping("/start")

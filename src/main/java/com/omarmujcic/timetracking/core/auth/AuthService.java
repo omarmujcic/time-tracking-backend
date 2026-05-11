@@ -57,7 +57,7 @@ public class AuthService {
     }
 
     private AuthResponseDTO authResponse(User user) {
-        return userMapper.toAuthResponseDTO(jwtService.createToken(user.getUsername()), toResponse(user));
+        return userMapper.toAuthResponseDTO(jwtService.createToken(user.getId().toString()), toResponse(user));
     }
 
     private String normalizeUsername(String username) {

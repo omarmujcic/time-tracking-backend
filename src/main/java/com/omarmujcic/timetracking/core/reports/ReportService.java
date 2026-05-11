@@ -41,6 +41,10 @@ import com.omarmujcic.timetracking.core.reports.dto.TimeReportDTO;
 import com.omarmujcic.timetracking.core.reports.mapper.ReportMapper;
 import com.omarmujcic.timetracking.core.timetracking.entity.TimeEntry;
 import com.omarmujcic.timetracking.core.timetracking.repository.TimeEntryRepository;
+import com.omarmujcic.timetracking.core.workspace.WorkspaceService;
+import com.omarmujcic.timetracking.core.workspace.entity.OrganizationMember;
+import com.omarmujcic.timetracking.core.workspace.entity.OrganizationRole;
+import com.omarmujcic.timetracking.core.workspace.entity.WorkspaceType;
 
 import lombok.RequiredArgsConstructor;
 
@@ -57,6 +61,7 @@ public class ReportService {
     private final TimeEntryRepository timeEntryRepository;
     private final UserRepository userRepository;
     private final ReportMapper reportMapper;
+    private final WorkspaceService workspaceService;
 
     @Transactional(readOnly = true)
     public TimeReportDTO timeReport(User user, ReportView view, LocalDate startDate, LocalDate endDate, String timezone,
@@ -69,17 +74,15 @@ public class ReportService {
         OffsetDateTime now = now();
         Instant rangeStart = startDate.atStartOfDay(zone).toInstant();
         Instant rangeEnd = endDate.plusDays(1).atStartOfDay(zone).toInstant();
-        List<String> descriptionWords = descriptionWords(description);
         Set<String> normalizedProjects = normalizedProjects(projectNames);
         Set<UUID> selectedUsers = userIds == null ? Set.of() : new LinkedHashSet<>(userIds);
 
-        List<TimeEntry> entries = timeEntryRepository.findAllWithUserOrderByStartedAtDesc().stream()
+        List<TimeEntry> entries = visibleEntries(user).stream()
             .filter(entry -> selectedUsers.isEmpty() || selectedUsers.contains(entry.getUser().getId()))
             .filter(entry -> normalizedProjects.isEmpty()
-                || normalizedProjects.contains(entry.getProjectName().trim().toLowerCase(Locale.ROOT)))
+                || normalizedProjects.contains(projectName(entry).trim().toLowerCase(Locale.ROOT)))
             .filter(entry -> minRate == null || entry.getHourlyRate().compareTo(minRate) >= 0)
             .filter(entry -> maxRate == null || entry.getHourlyRate().compareTo(maxRate) <= 0)
-            .filter(entry -> matchesDescription(entry, descriptionWords))
             .filter(entry -> overlaps(entry.getStartedAt().toInstant(), endInstant(entry, now), rangeStart, rangeEnd))
             .toList();
 
@@ -106,7 +109,7 @@ public class ReportService {
                 completedTotals.add(clippedSeconds, clippedAmount);
                 completedEntryCount++;
                 addBucketTotals(entry, windows, bucketTotals);
-                projectTotals.computeIfAbsent(entry.getProjectName(), ProjectTotals::new).add(clippedSeconds, clippedAmount);
+                projectTotals.computeIfAbsent(projectName(entry), ProjectTotals::new).add(clippedSeconds, clippedAmount);
             }
 
             LocalDate entryDate = entry.getStartedAt().atZoneSameInstant(zone).toLocalDate();
@@ -148,15 +151,24 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public ReportFilterOptionsDTO filterOptions(User user) {
-        List<ReportFilterOptionsDTO.ReportUserOptionDTO> users = userRepository.findAll().stream()
+        List<User> visibleUsers = visibleEntries(user).stream()
+            .map(TimeEntry::getUser)
+            .collect(Collectors.toMap(User::getId, option -> option, (first, second) -> first, LinkedHashMap::new))
+            .values()
+            .stream()
+            .toList();
+        if (visibleUsers.isEmpty()) {
+            visibleUsers = List.of(user);
+        }
+        List<ReportFilterOptionsDTO.ReportUserOptionDTO> users = visibleUsers.stream()
             .sorted(Comparator.comparing(User::getDisplayName, String.CASE_INSENSITIVE_ORDER))
             .map(option -> new ReportFilterOptionsDTO.ReportUserOptionDTO(option.getId(), option.getUsername(),
                     option.getDisplayName()))
             .toList();
 
-        List<TimeEntry> entries = timeEntryRepository.findAllWithUserOrderByStartedAtDesc();
+        List<TimeEntry> entries = visibleEntries(user);
         List<String> projects = entries.stream()
-            .map(TimeEntry::getProjectName)
+            .map(this::projectName)
             .filter(project -> project != null && !project.isBlank())
             .collect(Collectors.toCollection(LinkedHashSet::new))
             .stream()
@@ -226,27 +238,6 @@ public class ReportService {
         return date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
     }
 
-    private boolean matchesDescription(TimeEntry entry, List<String> words) {
-        if (words.isEmpty()) {
-            return true;
-        }
-        String description = entry.getDescription();
-        if (description == null || description.isBlank()) {
-            return false;
-        }
-        String normalized = description.toLowerCase(Locale.ROOT);
-        return words.stream().anyMatch(normalized::contains);
-    }
-
-    private List<String> descriptionWords(String description) {
-        if (description == null || description.isBlank()) {
-            return List.of();
-        }
-        return java.util.Arrays.stream(description.trim().toLowerCase(Locale.ROOT).split("\\s+"))
-            .filter(word -> !word.isBlank())
-            .toList();
-    }
-
     private Set<String> normalizedProjects(List<String> projectNames) {
         if (projectNames == null) {
             return Set.of();
@@ -255,6 +246,25 @@ public class ReportService {
             .filter(project -> project != null && !project.isBlank())
             .map(project -> project.trim().toLowerCase(Locale.ROOT))
             .collect(Collectors.toSet());
+    }
+
+    private List<TimeEntry> visibleEntries(User user) {
+        if (user.getActiveWorkspaceType() == WorkspaceType.ORGANIZATION) {
+            OrganizationMember member = workspaceService.activeOrganizationMembership(user);
+            List<TimeEntry> entries = timeEntryRepository.findByOrganizationIdOrderByStartedAtDesc(
+                    member.getOrganization().getId());
+            if (member.getRole() == OrganizationRole.MEMBER) {
+                return entries.stream().filter(entry -> entry.getUser().getId().equals(user.getId())).toList();
+            }
+            return entries;
+        }
+        return timeEntryRepository.findByUserIdOrderByStartedAtDesc(user.getId()).stream()
+            .filter(entry -> entry.getWorkspaceType() == null || entry.getWorkspaceType() == WorkspaceType.PERSONAL)
+            .toList();
+    }
+
+    private String projectName(TimeEntry entry) {
+        return entry.getProject() == null ? entry.getProjectName() : entry.getProject().getName();
     }
 
     private boolean overlaps(Instant start, Instant end, Instant rangeStart, Instant rangeEnd) {
