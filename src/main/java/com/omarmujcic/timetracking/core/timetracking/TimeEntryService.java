@@ -62,6 +62,14 @@ public class TimeEntryService {
                 now), now);
     }
 
+    @Transactional(readOnly = true)
+    public TimeEntryResponseDTO active(User user) {
+        OffsetDateTime now = now();
+        return timeEntryRepository.findByUserIdAndEndedAtIsNull(user.getId())
+            .map(entry -> timeEntryMapper.toResponseDTO(entry, now))
+            .orElse(null);
+    }
+
     @Transactional
     public TimeEntryResponseDTO start(User user, StartTimerRequestDTO request) {
         OffsetDateTime now = now();

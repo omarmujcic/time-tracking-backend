@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -58,6 +59,12 @@ public class TimeEntryController {
             @RequestParam(required = false) List<UUID> userIds
     ) {
         return timeEntryService.summary(user, month, day, project, userId, projectNames, userIds);
+    }
+
+    @GetMapping("/active")
+    public ResponseEntity<TimeEntryResponseDTO> active(@AuthenticationPrincipal User user) {
+        TimeEntryResponseDTO activeEntry = timeEntryService.active(user);
+        return activeEntry == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(activeEntry);
     }
 
     @PostMapping("/start")

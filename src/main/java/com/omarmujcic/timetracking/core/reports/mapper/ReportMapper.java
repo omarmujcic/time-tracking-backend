@@ -9,6 +9,8 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
 import com.omarmujcic.timetracking.core.reports.dto.ReportEntryDTO;
+import com.omarmujcic.timetracking.core.reports.dto.ReportFilterOptionsDTO;
+import com.omarmujcic.timetracking.core.projects.entity.Task;
 import com.omarmujcic.timetracking.core.timetracking.entity.TimeEntry;
 
 @Mapper(componentModel = "spring", imports = {DateTimeFormatter.class, Locale.class})
@@ -40,4 +42,10 @@ public interface ReportMapper {
             boolean active,
             LocalDate entryDate
     );
+
+    @Mapping(target = "id", source = "task.id")
+    @Mapping(target = "name", source = "task.name")
+    @Mapping(target = "projectId", source = "task.project.id")
+    @Mapping(target = "projectName", source = "projectName")
+    ReportFilterOptionsDTO.ReportTaskOptionDTO toTaskOptionDTO(Task task, String projectName);
 }
