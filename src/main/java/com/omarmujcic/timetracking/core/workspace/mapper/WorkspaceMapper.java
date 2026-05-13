@@ -50,6 +50,17 @@ public interface WorkspaceMapper {
     @Mapping(target = "createdBy", source = "createdBy")
     @Mapping(target = "createdAt", source = "now")
     @Mapping(target = "updatedAt", source = "now")
+    @Mapping(target = "billingName", ignore = true)
+    @Mapping(target = "billingContactPerson", ignore = true)
+    @Mapping(target = "billingAddressLine1", ignore = true)
+    @Mapping(target = "billingAddressLine2", ignore = true)
+    @Mapping(target = "billingPostalCode", ignore = true)
+    @Mapping(target = "billingCity", ignore = true)
+    @Mapping(target = "billingCountry", ignore = true)
+    @Mapping(target = "billingEmail", ignore = true)
+    @Mapping(target = "billingPhone", ignore = true)
+    @Mapping(target = "billingTaxId", ignore = true)
+    @Mapping(target = "billingRegistrationNumber", ignore = true)
     Organization toOrganization(OrganizationRequestDTO request, String joinCode, User createdBy,
             java.time.OffsetDateTime now);
 
@@ -67,6 +78,17 @@ public interface WorkspaceMapper {
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "name", expression = "java(request.getName().trim())")
     @Mapping(target = "updatedAt", source = "updatedAt")
+    @Mapping(target = "billingName", ignore = true)
+    @Mapping(target = "billingContactPerson", ignore = true)
+    @Mapping(target = "billingAddressLine1", ignore = true)
+    @Mapping(target = "billingAddressLine2", ignore = true)
+    @Mapping(target = "billingPostalCode", ignore = true)
+    @Mapping(target = "billingCity", ignore = true)
+    @Mapping(target = "billingCountry", ignore = true)
+    @Mapping(target = "billingEmail", ignore = true)
+    @Mapping(target = "billingPhone", ignore = true)
+    @Mapping(target = "billingTaxId", ignore = true)
+    @Mapping(target = "billingRegistrationNumber", ignore = true)
     void updateOrganization(OrganizationRequestDTO request, java.time.OffsetDateTime updatedAt,
             @MappingTarget Organization organization);
 
@@ -76,6 +98,17 @@ public interface WorkspaceMapper {
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "joinCode", source = "joinCode")
     @Mapping(target = "updatedAt", source = "updatedAt")
+    @Mapping(target = "billingName", ignore = true)
+    @Mapping(target = "billingContactPerson", ignore = true)
+    @Mapping(target = "billingAddressLine1", ignore = true)
+    @Mapping(target = "billingAddressLine2", ignore = true)
+    @Mapping(target = "billingPostalCode", ignore = true)
+    @Mapping(target = "billingCity", ignore = true)
+    @Mapping(target = "billingCountry", ignore = true)
+    @Mapping(target = "billingEmail", ignore = true)
+    @Mapping(target = "billingPhone", ignore = true)
+    @Mapping(target = "billingTaxId", ignore = true)
+    @Mapping(target = "billingRegistrationNumber", ignore = true)
     void updateOrganizationCode(String joinCode, java.time.OffsetDateTime updatedAt,
             @MappingTarget Organization organization);
 
