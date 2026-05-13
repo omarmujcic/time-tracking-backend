@@ -34,12 +34,14 @@ public class ReportController {
             @RequestParam(defaultValue = "UTC") String timezone,
             @RequestParam(required = false) List<UUID> userIds,
             @RequestParam(required = false) List<String> projectNames,
+            @RequestParam(required = false) List<UUID> taskIds,
+            @RequestParam(defaultValue = "false") boolean includeNoTask,
             @RequestParam(required = false) BigDecimal minRate,
             @RequestParam(required = false) BigDecimal maxRate,
             @RequestParam(required = false) String description
     ) {
-        return reportService.timeReport(user, view, startDate, endDate, timezone, userIds, projectNames, minRate, maxRate,
-                description);
+        return reportService.timeReport(user, view, startDate, endDate, timezone, userIds, projectNames, taskIds,
+                includeNoTask, minRate, maxRate, description);
     }
 
     @GetMapping("/filter-options")

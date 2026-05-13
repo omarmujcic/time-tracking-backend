@@ -33,6 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.omarmujcic.timetracking.core.auth.entity.User;
 import com.omarmujcic.timetracking.core.auth.repository.UserRepository;
 import com.omarmujcic.timetracking.core.reports.dto.ReportBucketDTO;
+import com.omarmujcic.timetracking.core.reports.dto.ReportBucketSegmentDTO;
 import com.omarmujcic.timetracking.core.reports.dto.ReportEntryDTO;
 import com.omarmujcic.timetracking.core.reports.dto.ReportFilterOptionsDTO;
 import com.omarmujcic.timetracking.core.reports.dto.ReportProjectDTO;
@@ -65,7 +66,8 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public TimeReportDTO timeReport(User user, ReportView view, LocalDate startDate, LocalDate endDate, String timezone,
-            List<UUID> userIds, List<String> projectNames, BigDecimal minRate, BigDecimal maxRate, String description) {
+            List<UUID> userIds, List<String> projectNames, List<UUID> taskIds, boolean includeNoTask,
+            BigDecimal minRate, BigDecimal maxRate, String description) {
         if (endDate.isBefore(startDate)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "End date cannot be before start date");
         }
@@ -76,11 +78,14 @@ public class ReportService {
         Instant rangeEnd = endDate.plusDays(1).atStartOfDay(zone).toInstant();
         Set<String> normalizedProjects = normalizedProjects(projectNames);
         Set<UUID> selectedUsers = userIds == null ? Set.of() : new LinkedHashSet<>(userIds);
+        Set<UUID> selectedTasks = taskIds == null ? Set.of() : new LinkedHashSet<>(taskIds);
+        boolean taskFilterActive = !selectedTasks.isEmpty() || includeNoTask;
 
         List<TimeEntry> entries = visibleEntries(user).stream()
             .filter(entry -> selectedUsers.isEmpty() || selectedUsers.contains(entry.getUser().getId()))
             .filter(entry -> normalizedProjects.isEmpty()
                 || normalizedProjects.contains(projectName(entry).trim().toLowerCase(Locale.ROOT)))
+            .filter(entry -> !taskFilterActive || taskMatches(entry, selectedTasks, includeNoTask))
             .filter(entry -> minRate == null || entry.getHourlyRate().compareTo(minRate) >= 0)
             .filter(entry -> maxRate == null || entry.getHourlyRate().compareTo(maxRate) <= 0)
             .filter(entry -> overlaps(entry.getStartedAt().toInstant(), endInstant(entry, now), rangeStart, rangeEnd))
@@ -89,6 +94,9 @@ public class ReportService {
         List<BucketWindow> windows = bucketWindows(view, startDate, endDate, zone);
         Map<String, Totals> bucketTotals = windows.stream()
             .collect(Collectors.toMap(BucketWindow::key, ignored -> new Totals(), (first, second) -> first, LinkedHashMap::new));
+        Map<String, Map<TaskSegmentKey, TaskSegmentTotals>> bucketTaskTotals = windows.stream()
+            .collect(Collectors.toMap(BucketWindow::key, ignored -> new LinkedHashMap<>(), (first, second) -> first,
+                    LinkedHashMap::new));
         Map<String, ProjectTotals> projectTotals = new LinkedHashMap<>();
         List<ReportEntryDTO> reportEntries = new ArrayList<>();
         Totals completedTotals = new Totals();
@@ -108,7 +116,7 @@ public class ReportService {
             } else {
                 completedTotals.add(clippedSeconds, clippedAmount);
                 completedEntryCount++;
-                addBucketTotals(entry, windows, bucketTotals);
+                addBucketTotals(entry, windows, bucketTotals, bucketTaskTotals);
                 projectTotals.computeIfAbsent(projectName(entry), ProjectTotals::new).add(clippedSeconds, clippedAmount);
             }
 
@@ -120,7 +128,13 @@ public class ReportService {
         List<ReportBucketDTO> buckets = windows.stream()
             .map(window -> {
                 Totals totals = bucketTotals.get(window.key());
-                return new ReportBucketDTO(window.key(), window.label(), totals.seconds, totals.amount);
+                List<ReportBucketSegmentDTO> taskSegments = bucketTaskTotals.get(window.key()).values().stream()
+                    .sorted(Comparator.comparingLong(TaskSegmentTotals::seconds).reversed()
+                        .thenComparing(TaskSegmentTotals::label, String.CASE_INSENSITIVE_ORDER))
+                    .map(segment -> new ReportBucketSegmentDTO(segment.taskId(), segment.taskName(),
+                            segment.projectName(), segment.seconds(), segment.amount()))
+                    .toList();
+                return new ReportBucketDTO(window.key(), window.label(), totals.seconds, totals.amount, taskSegments);
             })
             .toList();
 
@@ -174,6 +188,17 @@ public class ReportService {
             .stream()
             .sorted(String.CASE_INSENSITIVE_ORDER)
             .toList();
+        List<ReportFilterOptionsDTO.ReportTaskOptionDTO> tasks = entries.stream()
+            .filter(entry -> entry.getTask() != null)
+            .collect(Collectors.toMap(entry -> entry.getTask().getId(), entry -> reportMapper.toTaskOptionDTO(
+                    entry.getTask(), projectName(entry)), (first, second) -> first, LinkedHashMap::new))
+            .values()
+            .stream()
+            .sorted(Comparator.comparing(ReportFilterOptionsDTO.ReportTaskOptionDTO::projectName,
+                    String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(ReportFilterOptionsDTO.ReportTaskOptionDTO::name, String.CASE_INSENSITIVE_ORDER))
+            .toList();
+        boolean hasNoTask = entries.stream().anyMatch(entry -> entry.getTask() == null);
         List<BigDecimal> rates = entries.stream()
             .map(TimeEntry::getHourlyRate)
             .collect(Collectors.toCollection(LinkedHashSet::new))
@@ -181,16 +206,22 @@ public class ReportService {
             .sorted()
             .toList();
 
-        return new ReportFilterOptionsDTO(users, projects, rates);
+        return new ReportFilterOptionsDTO(users, projects, tasks, rates, hasNoTask);
     }
 
-    private void addBucketTotals(TimeEntry entry, List<BucketWindow> windows, Map<String, Totals> bucketTotals) {
+    private void addBucketTotals(TimeEntry entry, List<BucketWindow> windows, Map<String, Totals> bucketTotals,
+            Map<String, Map<TaskSegmentKey, TaskSegmentTotals>> bucketTaskTotals) {
         Instant entryStart = entry.getStartedAt().toInstant();
         Instant entryEnd = entry.getEndedAt().toInstant();
         for (BucketWindow window : windows) {
             long seconds = overlapSeconds(entryStart, entryEnd, window.start(), window.end());
             if (seconds > 0) {
-                bucketTotals.get(window.key()).add(seconds, amount(entry.getHourlyRate(), seconds));
+                BigDecimal segmentAmount = amount(entry.getHourlyRate(), seconds);
+                bucketTotals.get(window.key()).add(seconds, segmentAmount);
+                TaskSegmentKey key = taskSegmentKey(entry);
+                bucketTaskTotals.get(window.key())
+                    .computeIfAbsent(key, TaskSegmentTotals::new)
+                    .add(seconds, segmentAmount);
             }
         }
     }
@@ -248,6 +279,13 @@ public class ReportService {
             .collect(Collectors.toSet());
     }
 
+    private boolean taskMatches(TimeEntry entry, Set<UUID> selectedTasks, boolean includeNoTask) {
+        if (entry.getTask() == null) {
+            return includeNoTask;
+        }
+        return selectedTasks.contains(entry.getTask().getId());
+    }
+
     private List<TimeEntry> visibleEntries(User user) {
         if (user.getActiveWorkspaceType() == WorkspaceType.ORGANIZATION) {
             OrganizationMember member = workspaceService.activeOrganizationMembership(user);
@@ -265,6 +303,14 @@ public class ReportService {
 
     private String projectName(TimeEntry entry) {
         return entry.getProject() == null ? entry.getProjectName() : entry.getProject().getName();
+    }
+
+    private TaskSegmentKey taskSegmentKey(TimeEntry entry) {
+        if (entry.getTask() == null) {
+            return new TaskSegmentKey(null, null, null, projectName(entry));
+        }
+        return new TaskSegmentKey(entry.getTask().getId(), entry.getTask().getName(), projectName(entry),
+                projectName(entry) + " / " + entry.getTask().getName());
     }
 
     private boolean overlaps(Instant start, Instant end, Instant rangeStart, Instant rangeEnd) {
