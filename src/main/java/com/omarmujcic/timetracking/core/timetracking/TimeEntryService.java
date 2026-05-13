@@ -65,7 +65,8 @@ public class TimeEntryService {
     @Transactional(readOnly = true)
     public TimeEntryResponseDTO active(User user) {
         OffsetDateTime now = now();
-        return timeEntryRepository.findByUserIdAndEndedAtIsNull(user.getId())
+        EntryWorkspace workspace = entryWorkspace(user);
+        return activeTimer(user, workspace)
             .map(entry -> timeEntryMapper.toResponseDTO(entry, now))
             .orElse(null);
     }
@@ -236,6 +237,13 @@ public class TimeEntryService {
             return new EntryWorkspace(WorkspaceType.ORGANIZATION, member.getOrganization());
         }
         return new EntryWorkspace(WorkspaceType.PERSONAL, null);
+    }
+
+    private java.util.Optional<TimeEntry> activeTimer(User user, EntryWorkspace workspace) {
+        if (workspace.type() == WorkspaceType.ORGANIZATION) {
+            return timeEntryRepository.findActiveOrganizationTimer(user.getId(), workspace.organization().getId());
+        }
+        return timeEntryRepository.findActivePersonalTimer(user.getId(), WorkspaceType.PERSONAL);
     }
 
     private boolean isWithinDateFilters(TimeEntry entry, YearMonth month, LocalDate day, OffsetDateTime now) {
