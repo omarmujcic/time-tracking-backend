@@ -17,6 +17,7 @@ public interface UserPreferenceMapper {
     @Mapping(target = "language", constant = "en")
     @Mapping(target = "themeMode", constant = "SYSTEM")
     @Mapping(target = "groupedEntriesEnabled", constant = "true")
+    @Mapping(target = "includeOrganizationEntriesInPersonalReports", constant = "true")
     @Mapping(target = "dateFormat", constant = "YYYY-MM-DD")
     @Mapping(target = "decimalSeparator", constant = "DOT")
     @Mapping(target = "timezone", source = "timezone")

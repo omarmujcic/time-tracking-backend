@@ -17,5 +17,6 @@ public class ProjectDTO {
     private ProjectStatus status;
     private BigDecimal hourlyRate;
     private String currency;
+    private ProjectBillingRuleDTO billingRule;
     private List<TaskDTO> tasks;
 }

@@ -32,6 +32,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.omarmujcic.timetracking.core.auth.entity.User;
 import com.omarmujcic.timetracking.core.auth.repository.UserRepository;
+import com.omarmujcic.timetracking.core.billing.BillingCalculationService;
+import com.omarmujcic.timetracking.core.billing.BillingReportResult;
+import com.omarmujcic.timetracking.core.projects.entity.Project;
+import com.omarmujcic.timetracking.core.projects.repository.ProjectRepository;
 import com.omarmujcic.timetracking.core.reports.dto.ReportBucketDTO;
 import com.omarmujcic.timetracking.core.reports.dto.ReportBucketSegmentDTO;
 import com.omarmujcic.timetracking.core.reports.dto.ReportEntryDTO;
@@ -63,11 +67,13 @@ public class ReportService {
     private final UserRepository userRepository;
     private final ReportMapper reportMapper;
     private final WorkspaceService workspaceService;
+    private final ProjectRepository projectRepository;
+    private final BillingCalculationService billingCalculationService;
 
     @Transactional(readOnly = true)
     public TimeReportDTO timeReport(User user, ReportView view, LocalDate startDate, LocalDate endDate, String timezone,
             List<UUID> userIds, List<String> projectNames, List<UUID> taskIds, boolean includeNoTask,
-            BigDecimal minRate, BigDecimal maxRate, String description) {
+            BigDecimal minRate, BigDecimal maxRate, boolean includeOrganizationEntries, String description) {
         if (endDate.isBefore(startDate)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "End date cannot be before start date");
         }
@@ -80,8 +86,12 @@ public class ReportService {
         Set<UUID> selectedUsers = userIds == null ? Set.of() : new LinkedHashSet<>(userIds);
         Set<UUID> selectedTasks = taskIds == null ? Set.of() : new LinkedHashSet<>(taskIds);
         boolean taskFilterActive = !selectedTasks.isEmpty() || includeNoTask;
+        boolean billingRulesEnabled = selectedUsers.isEmpty()
+            && !taskFilterActive
+            && minRate == null
+            && maxRate == null;
 
-        List<TimeEntry> entries = visibleEntries(user).stream()
+        List<TimeEntry> entries = visibleEntries(user, includeOrganizationEntries).stream()
             .filter(entry -> selectedUsers.isEmpty() || selectedUsers.contains(entry.getUser().getId()))
             .filter(entry -> normalizedProjects.isEmpty()
                 || normalizedProjects.contains(projectName(entry).trim().toLowerCase(Locale.ROOT)))
@@ -138,18 +148,44 @@ public class ReportService {
             })
             .toList();
 
+        BillingReportResult billingReport = null;
+        if (billingRulesEnabled) {
+            billingReport = billingCalculationService.reportTotals(
+                    entries.stream().filter(entry -> entry.getEndedAt() != null).toList(),
+                    visibleProjectsForBilling(user, entries, normalizedProjects, includeOrganizationEntries),
+                    startDate,
+                    endDate,
+                    zone,
+                    true
+            );
+            completedTotals.amount = billingReport.totalAmount();
+        }
+
         long projectSeconds = Math.max(1, completedTotals.seconds);
-        List<ReportProjectDTO> projects = projectTotals.values().stream()
-            .sorted(Comparator.comparingLong(ProjectTotals::seconds).reversed().thenComparing(ProjectTotals::projectName))
-            .map(project -> new ReportProjectDTO(
-                    project.projectName,
-                    project.seconds,
-                    project.amount,
-                    BigDecimal.valueOf(project.seconds)
-                        .multiply(BigDecimal.valueOf(100))
-                        .divide(BigDecimal.valueOf(projectSeconds), 2, RoundingMode.HALF_UP)
-            ))
-            .toList();
+        List<ReportProjectDTO> projects = billingReport == null
+                ? projectTotals.values().stream()
+                    .sorted(Comparator.comparingLong(ProjectTotals::seconds).reversed()
+                        .thenComparing(ProjectTotals::projectName))
+                    .map(project -> new ReportProjectDTO(
+                            project.projectName,
+                            project.seconds,
+                            project.amount,
+                            BigDecimal.valueOf(project.seconds)
+                                .multiply(BigDecimal.valueOf(100))
+                                .divide(BigDecimal.valueOf(projectSeconds), 2, RoundingMode.HALF_UP)
+                    ))
+                    .toList()
+                : billingReport.projectTotals().stream()
+                    .map(project -> new ReportProjectDTO(
+                            project.projectName(),
+                            project.totalSeconds(),
+                            project.totalAmount(),
+                            BigDecimal.valueOf(project.totalSeconds())
+                                .multiply(BigDecimal.valueOf(100))
+                                .divide(BigDecimal.valueOf(projectSeconds), 2, RoundingMode.HALF_UP)
+                    ))
+                    .toList();
+
 
         ReportSummaryDTO summary = new ReportSummaryDTO(
                 completedTotals.seconds,
@@ -164,8 +200,9 @@ public class ReportService {
     }
 
     @Transactional(readOnly = true)
-    public ReportFilterOptionsDTO filterOptions(User user) {
-        List<User> visibleUsers = visibleEntries(user).stream()
+    public ReportFilterOptionsDTO filterOptions(User user, boolean includeOrganizationEntries) {
+        List<TimeEntry> entries = visibleEntries(user, includeOrganizationEntries);
+        List<User> visibleUsers = entries.stream()
             .map(TimeEntry::getUser)
             .collect(Collectors.toMap(User::getId, option -> option, (first, second) -> first, LinkedHashMap::new))
             .values()
@@ -180,7 +217,6 @@ public class ReportService {
                     option.getDisplayName()))
             .toList();
 
-        List<TimeEntry> entries = visibleEntries(user);
         List<String> projects = entries.stream()
             .map(this::projectName)
             .filter(project -> project != null && !project.isBlank())
@@ -286,7 +322,7 @@ public class ReportService {
         return selectedTasks.contains(entry.getTask().getId());
     }
 
-    private List<TimeEntry> visibleEntries(User user) {
+    private List<TimeEntry> visibleEntries(User user, boolean includeOrganizationEntries) {
         if (user.getActiveWorkspaceType() == WorkspaceType.ORGANIZATION) {
             OrganizationMember member = workspaceService.activeOrganizationMembership(user);
             List<TimeEntry> entries = timeEntryRepository.findByOrganizationIdOrderByStartedAtDesc(
@@ -296,8 +332,49 @@ public class ReportService {
             }
             return entries;
         }
-        return timeEntryRepository.findByUserIdOrderByStartedAtDesc(user.getId()).stream()
+        List<TimeEntry> entries = timeEntryRepository.findByUserIdOrderByStartedAtDesc(user.getId());
+        if (includeOrganizationEntries) {
+            return entries;
+        }
+        return entries.stream()
             .filter(entry -> entry.getWorkspaceType() == null || entry.getWorkspaceType() == WorkspaceType.PERSONAL)
+            .toList();
+    }
+
+    private List<Project> visibleProjectsForBilling(User user, List<TimeEntry> entries, Set<String> normalizedProjects,
+            boolean includeOrganizationEntries) {
+        List<Project> projects;
+        if (user.getActiveWorkspaceType() == WorkspaceType.ORGANIZATION) {
+            OrganizationMember member = workspaceService.activeOrganizationMembership(user);
+            if (member.getRole() == OrganizationRole.MEMBER) {
+                projects = entries.stream()
+                    .map(TimeEntry::getProject)
+                    .filter(project -> project != null)
+                    .collect(Collectors.toMap(Project::getId, project -> project, (first, second) -> first,
+                            LinkedHashMap::new))
+                    .values()
+                    .stream()
+                    .toList();
+            } else {
+                projects = projectRepository.findByOrganizationIdOrderByNameAsc(member.getOrganization().getId());
+            }
+        } else {
+            if (includeOrganizationEntries) {
+                Map<UUID, Project> combinedProjects = new LinkedHashMap<>();
+                projectRepository.findByUserIdOrderByNameAsc(user.getId())
+                    .forEach(project -> combinedProjects.put(project.getId(), project));
+                entries.stream()
+                    .map(TimeEntry::getProject)
+                    .filter(project -> project != null)
+                    .forEach(project -> combinedProjects.putIfAbsent(project.getId(), project));
+                projects = new ArrayList<>(combinedProjects.values());
+            } else {
+                projects = projectRepository.findByUserIdOrderByNameAsc(user.getId());
+            }
+        }
+        return projects.stream()
+            .filter(project -> normalizedProjects.isEmpty()
+                || normalizedProjects.contains(project.getName().trim().toLowerCase(Locale.ROOT)))
             .toList();
     }
 
@@ -307,7 +384,7 @@ public class ReportService {
 
     private TaskSegmentKey taskSegmentKey(TimeEntry entry) {
         if (entry.getTask() == null) {
-            return new TaskSegmentKey(null, null, null, projectName(entry));
+            return new TaskSegmentKey(null, null, projectName(entry), projectName(entry));
         }
         return new TaskSegmentKey(entry.getTask().getId(), entry.getTask().getName(), projectName(entry),
                 projectName(entry) + " / " + entry.getTask().getName());

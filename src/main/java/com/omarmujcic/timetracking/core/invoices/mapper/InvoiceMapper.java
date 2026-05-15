@@ -11,6 +11,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 
 import com.omarmujcic.timetracking.core.auth.entity.User;
+import com.omarmujcic.timetracking.core.billing.BillingLine;
 import com.omarmujcic.timetracking.core.invoices.dto.InvoiceDTO;
 import com.omarmujcic.timetracking.core.invoices.dto.InvoiceHistoryItemDTO;
 import com.omarmujcic.timetracking.core.invoices.dto.InvoiceLineDTO;
@@ -176,6 +177,8 @@ public interface InvoiceMapper {
             String workspaceName, boolean ready, boolean fromReady, boolean toReady, boolean canManageUserSettings,
             boolean canManageWorkspaceSettings, boolean canManageSetup, String suggestedInvoiceNumber,
             String workspaceSuggestedInvoiceNumber);
+
+    InvoiceWorkLineDTO toWorkLineDTO(BillingLine line);
 
     @Mapping(target = "id", expression = "java(UUID.randomUUID())")
     @Mapping(target = "workspaceType", source = "workspaceType")
