@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.omarmujcic.timetracking.core.auth.entity.User;
 import com.omarmujcic.timetracking.core.timetracking.dto.CreateTimeEntryRequestDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.StartTimerRequestDTO;
+import com.omarmujcic.timetracking.core.timetracking.dto.TimeEntryPageDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.TimeEntryResponseDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.TimeEntrySummaryDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.UpdateTimeEntryRequestDTO;
@@ -36,16 +37,20 @@ public class TimeEntryController {
     private final TimeEntryService timeEntryService;
 
     @GetMapping
-    public List<TimeEntryResponseDTO> list(
+    public TimeEntryPageDTO list(
             @AuthenticationPrincipal User user,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM") YearMonth month,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate day,
             @RequestParam(required = false) String project,
             @RequestParam(required = false) UUID userId,
             @RequestParam(required = false) List<String> projectNames,
-            @RequestParam(required = false) List<UUID> userIds
+            @RequestParam(required = false) List<UUID> userIds,
+            @RequestParam(defaultValue = "UTC") String timezone,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate cursor,
+            @RequestParam(required = false) Integer pageSize
     ) {
-        return timeEntryService.list(user, month, day, project, userId, projectNames, userIds);
+        return timeEntryService.list(user, month, day, project, userId, projectNames, userIds, timezone, cursor,
+                pageSize);
     }
 
     @GetMapping("/summary")
@@ -56,9 +61,10 @@ public class TimeEntryController {
             @RequestParam(required = false) String project,
             @RequestParam(required = false) UUID userId,
             @RequestParam(required = false) List<String> projectNames,
-            @RequestParam(required = false) List<UUID> userIds
+            @RequestParam(required = false) List<UUID> userIds,
+            @RequestParam(defaultValue = "UTC") String timezone
     ) {
-        return timeEntryService.summary(user, month, day, project, userId, projectNames, userIds);
+        return timeEntryService.summary(user, month, day, project, userId, projectNames, userIds, timezone);
     }
 
     @GetMapping("/active")

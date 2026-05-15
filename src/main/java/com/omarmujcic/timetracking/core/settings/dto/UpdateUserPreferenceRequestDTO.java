@@ -21,6 +21,8 @@ public class UpdateUserPreferenceRequestDTO {
 
     private boolean groupedEntriesEnabled;
 
+    private boolean includeOrganizationEntriesInPersonalReports;
+
     @NotBlank
     @Size(max = 32)
     private String dateFormat;

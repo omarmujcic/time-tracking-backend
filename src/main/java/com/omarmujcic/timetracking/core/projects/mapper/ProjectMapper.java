@@ -9,6 +9,7 @@ import org.mapstruct.MappingTarget;
 
 import com.omarmujcic.timetracking.core.auth.entity.User;
 import com.omarmujcic.timetracking.core.projects.dto.ProjectDTO;
+import com.omarmujcic.timetracking.core.projects.dto.ProjectBillingRuleDTO;
 import com.omarmujcic.timetracking.core.projects.dto.TaskDTO;
 import com.omarmujcic.timetracking.core.projects.dto.UpsertProjectRequestDTO;
 import com.omarmujcic.timetracking.core.projects.dto.UpsertTaskRequestDTO;
@@ -19,8 +20,14 @@ import com.omarmujcic.timetracking.core.workspace.entity.Organization;
 @Mapper(componentModel = "spring", imports = UUID.class)
 public interface ProjectMapper {
 
+    @Mapping(target = "id", source = "project.id")
+    @Mapping(target = "name", source = "project.name")
+    @Mapping(target = "status", source = "project.status")
+    @Mapping(target = "hourlyRate", source = "project.hourlyRate")
+    @Mapping(target = "currency", source = "project.currency")
+    @Mapping(target = "billingRule", source = "billingRule")
     @Mapping(target = "tasks", source = "tasks")
-    ProjectDTO toDTO(Project project, List<TaskDTO> tasks);
+    ProjectDTO toDTO(Project project, ProjectBillingRuleDTO billingRule, List<TaskDTO> tasks);
 
     @Mapping(target = "projectId", source = "project.id")
     TaskDTO toTaskDTO(Task task);

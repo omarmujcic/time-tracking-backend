@@ -2,13 +2,10 @@ package com.omarmujcic.timetracking.core.invoices;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.omarmujcic.timetracking.core.auth.entity.User;
 import com.omarmujcic.timetracking.core.auth.repository.UserRepository;
+import com.omarmujcic.timetracking.core.billing.BillingCalculationService;
 import com.omarmujcic.timetracking.core.invoices.dto.InvoiceDTO;
 import com.omarmujcic.timetracking.core.invoices.dto.InvoiceGenerateRequestDTO;
 import com.omarmujcic.timetracking.core.invoices.dto.InvoiceHistoryItemDTO;
@@ -42,6 +40,7 @@ import com.omarmujcic.timetracking.core.invoices.repository.InvoiceRepository;
 import com.omarmujcic.timetracking.core.invoices.repository.InvoiceSettingsRepository;
 import com.omarmujcic.timetracking.core.invoices.repository.InvoiceUserSettingsRepository;
 import com.omarmujcic.timetracking.core.projects.entity.Project;
+import com.omarmujcic.timetracking.core.projects.repository.ProjectRepository;
 import com.omarmujcic.timetracking.core.timetracking.entity.TimeEntry;
 import com.omarmujcic.timetracking.core.timetracking.repository.TimeEntryRepository;
 import com.omarmujcic.timetracking.core.workspace.WorkspaceService;
@@ -57,7 +56,6 @@ import lombok.RequiredArgsConstructor;
 public class InvoiceService {
 
     private static final String CURRENCY = "EUR";
-    private static final BigDecimal ONE = BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
     private static final String LEGACY_PROJECT_PREFIX = "name:";
 
@@ -68,6 +66,8 @@ public class InvoiceService {
     private final InvoiceUserSettingsRepository userSettingsRepository;
     private final InvoiceRepository invoiceRepository;
     private final InvoiceMapper invoiceMapper;
+    private final ProjectRepository projectRepository;
+    private final BillingCalculationService billingCalculationService;
 
     @Transactional(readOnly = true)
     public InvoiceSetupDTO setup(User user) {
@@ -226,43 +226,17 @@ public class InvoiceService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "End date cannot be before start date");
         }
         ZoneId zone = zone(timezone);
-        Instant rangeStart = startDate.atStartOfDay(zone).toInstant();
-        Instant rangeEnd = endDate.plusDays(1).atStartOfDay(zone).toInstant();
         Set<String> selectedProjectKeys = selectedProjectKeys(projectKeys);
-        Map<String, ProjectTotals> totalsByProject = new LinkedHashMap<>();
-
-        for (TimeEntry entry : visibleEntries(context)) {
-            if (entry.getEndedAt() == null) {
-                continue;
-            }
-            String key = projectKey(entry);
-            if (!selectedProjectKeys.isEmpty() && !selectedProjectKeys.contains(key)) {
-                continue;
-            }
-            long seconds = overlapSeconds(entry.getStartedAt().toInstant(), entry.getEndedAt().toInstant(),
-                    rangeStart, rangeEnd);
-            if (seconds <= 0) {
-                continue;
-            }
-            ProjectTotals totals = totalsByProject.computeIfAbsent(key,
-                    ignored -> new ProjectTotals(key, entry.getProject(), projectName(entry)));
-            totals.add(seconds, amount(entry.getHourlyRate(), seconds));
-        }
-
-        List<InvoiceWorkLineDTO> lines = totalsByProject.values().stream()
-            .sorted(Comparator.comparingLong(ProjectTotals::seconds).reversed()
-                .thenComparing(ProjectTotals::projectName, String.CASE_INSENSITIVE_ORDER))
-            .map(totals -> new InvoiceWorkLineDTO(
-                    totals.projectKey(),
-                    totals.project() == null ? null : totals.project().getId(),
-                    totals.projectName(),
-                    durationDescription(totals.seconds()),
-                    totals.seconds(),
-                    ONE,
-                    scaleMoney(totals.amount()),
-                    scaleMoney(totals.amount()),
-                    CURRENCY
-            ))
+        List<InvoiceWorkLineDTO> lines = billingCalculationService.invoiceLines(
+                    visibleEntries(context),
+                    visibleProjects(context),
+                    selectedProjectKeys,
+                    startDate,
+                    endDate,
+                    zone
+            )
+            .stream()
+            .map(invoiceMapper::toWorkLineDTO)
             .toList();
         BigDecimal subtotal = lines.stream()
             .map(InvoiceWorkLineDTO::totalAmount)
@@ -397,8 +371,28 @@ public class InvoiceService {
             .toList();
     }
 
+    private List<Project> visibleProjects(WorkspaceContext context) {
+        if (context.type() == WorkspaceType.ORGANIZATION) {
+            if (context.member().getRole() == OrganizationRole.MEMBER) {
+                return visibleEntries(context).stream()
+                    .map(TimeEntry::getProject)
+                    .filter(project -> project != null)
+                    .collect(java.util.stream.Collectors.toMap(Project::getId, project -> project,
+                            (first, second) -> first, LinkedHashMap::new))
+                    .values()
+                    .stream()
+                    .toList();
+            }
+            return projectRepository.findByOrganizationIdOrderByNameAsc(context.organization().getId());
+        }
+        return projectRepository.findByUserIdOrderByNameAsc(context.user().getId());
+    }
+
     private Map<String, Project> projectsByKey(WorkspaceContext context) {
         Map<String, Project> projects = new LinkedHashMap<>();
+        for (Project project : visibleProjects(context)) {
+            projects.putIfAbsent(project.getId().toString(), project);
+        }
         for (TimeEntry entry : visibleEntries(context)) {
             if (entry.getProject() != null) {
                 projects.putIfAbsent(projectKey(entry), entry.getProject());
@@ -461,25 +455,6 @@ public class InvoiceService {
         return entry.getProject() == null ? entry.getProjectName() : entry.getProject().getName();
     }
 
-    private long overlapSeconds(Instant start, Instant end, Instant rangeStart, Instant rangeEnd) {
-        Instant effectiveStart = start.isBefore(rangeStart) ? rangeStart : start;
-        Instant effectiveEnd = end.isAfter(rangeEnd) ? rangeEnd : end;
-        if (!effectiveEnd.isAfter(effectiveStart)) {
-            return 0;
-        }
-        return Duration.between(effectiveStart, effectiveEnd).toSeconds();
-    }
-
-    private BigDecimal amount(BigDecimal hourlyRate, long seconds) {
-        return hourlyRate
-            .multiply(BigDecimal.valueOf(seconds))
-            .divide(BigDecimal.valueOf(3600), 2, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal scaleMoney(BigDecimal value) {
-        return value == null ? ZERO : value.setScale(2, RoundingMode.HALF_UP);
-    }
-
     private BigDecimal scaleTax(BigDecimal value) {
         return value == null ? ZERO : value.setScale(2, RoundingMode.HALF_UP);
     }
@@ -490,15 +465,6 @@ public class InvoiceService {
 
     private String suggestedInvoiceNumber(InvoiceUserSettings settings) {
         return String.format("%04d", Math.max(1, settings.getNextInvoiceNumber()));
-    }
-
-    private String durationDescription(long seconds) {
-        long hours = seconds / 3600;
-        long minutes = (seconds % 3600) / 60;
-        if (hours == 0) {
-            return minutes + "m of work";
-        }
-        return hours + "h" + String.format("%02d", minutes) + "m of work";
     }
 
     private InvoiceUserSettingsRequestDTO userSettingsRequest(InvoiceSetupRequestDTO request) {
@@ -543,42 +509,4 @@ public class InvoiceService {
     ) {
     }
 
-    private static final class ProjectTotals {
-        private final String projectKey;
-        private final Project project;
-        private final String projectName;
-        private long seconds;
-        private BigDecimal amount = ZERO;
-
-        private ProjectTotals(String projectKey, Project project, String projectName) {
-            this.projectKey = projectKey;
-            this.project = project;
-            this.projectName = projectName;
-        }
-
-        private void add(long seconds, BigDecimal amount) {
-            this.seconds += seconds;
-            this.amount = this.amount.add(amount).setScale(2, RoundingMode.HALF_UP);
-        }
-
-        private String projectKey() {
-            return projectKey;
-        }
-
-        private Project project() {
-            return project;
-        }
-
-        private String projectName() {
-            return projectName;
-        }
-
-        private long seconds() {
-            return seconds;
-        }
-
-        private BigDecimal amount() {
-            return amount;
-        }
-    }
 }

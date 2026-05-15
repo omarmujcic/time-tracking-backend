@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.Valid;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -26,4 +27,8 @@ public class UpsertProjectRequestDTO {
     @DecimalMin(value = "0.01")
     @Digits(integer = 8, fraction = 2)
     private BigDecimal hourlyRate;
+
+    @Valid
+    @NotNull
+    private UpsertProjectBillingRuleRequestDTO billingRule;
 }

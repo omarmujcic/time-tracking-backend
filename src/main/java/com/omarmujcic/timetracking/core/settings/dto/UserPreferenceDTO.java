@@ -12,6 +12,7 @@ public class UserPreferenceDTO {
     private String language;
     private ThemeMode themeMode;
     private boolean groupedEntriesEnabled;
+    private boolean includeOrganizationEntriesInPersonalReports;
     private String dateFormat;
     private DecimalSeparator decimalSeparator;
     private String timezone;

@@ -1,5 +1,7 @@
 package com.omarmujcic.timetracking.core.projects;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -11,13 +13,19 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.omarmujcic.timetracking.core.auth.entity.User;
+import com.omarmujcic.timetracking.core.projects.dto.ProjectBillingRuleDTO;
 import com.omarmujcic.timetracking.core.projects.dto.ProjectDTO;
 import com.omarmujcic.timetracking.core.projects.dto.TaskDTO;
+import com.omarmujcic.timetracking.core.projects.dto.UpsertProjectBillingRuleRequestDTO;
 import com.omarmujcic.timetracking.core.projects.dto.UpsertProjectRequestDTO;
 import com.omarmujcic.timetracking.core.projects.dto.UpsertTaskRequestDTO;
 import com.omarmujcic.timetracking.core.projects.entity.Project;
+import com.omarmujcic.timetracking.core.projects.entity.ProjectBillingRule;
+import com.omarmujcic.timetracking.core.projects.entity.ProjectBillingRuleType;
 import com.omarmujcic.timetracking.core.projects.entity.Task;
+import com.omarmujcic.timetracking.core.projects.mapper.ProjectBillingRuleMapper;
 import com.omarmujcic.timetracking.core.projects.mapper.ProjectMapper;
+import com.omarmujcic.timetracking.core.projects.repository.ProjectBillingRuleRepository;
 import com.omarmujcic.timetracking.core.projects.repository.ProjectRepository;
 import com.omarmujcic.timetracking.core.projects.repository.TaskRepository;
 import com.omarmujcic.timetracking.core.timetracking.repository.TimeEntryRepository;
@@ -34,9 +42,11 @@ public class ProjectService {
     private static final String DEFAULT_CURRENCY = "EUR";
 
     private final ProjectRepository projectRepository;
+    private final ProjectBillingRuleRepository billingRuleRepository;
     private final TaskRepository taskRepository;
     private final TimeEntryRepository timeEntryRepository;
     private final ProjectMapper projectMapper;
+    private final ProjectBillingRuleMapper billingRuleMapper;
     private final WorkspaceService workspaceService;
 
     @Transactional(readOnly = true)
@@ -51,6 +61,7 @@ public class ProjectService {
         assertCanManageProjects(user);
         String name = request.getName().trim();
         assertUniqueProjectName(user, null, name);
+        assertValidBillingRule(request.getBillingRule());
 
         OffsetDateTime now = now();
         OrganizationMember member = user.getActiveWorkspaceType() == WorkspaceType.ORGANIZATION
@@ -64,7 +75,9 @@ public class ProjectService {
                 DEFAULT_CURRENCY,
                 now
         );
-        return toDTO(projectRepository.save(project));
+        Project saved = projectRepository.save(project);
+        saveBillingRule(saved, request.getBillingRule(), now);
+        return toDTO(saved);
     }
 
     @Transactional
@@ -73,7 +86,10 @@ public class ProjectService {
         Project project = findAccessibleProject(user, id);
         String name = request.getName().trim();
         assertUniqueProjectName(user, id, name);
-        projectMapper.updateEntity(request, name, now(), project);
+        assertValidBillingRule(request.getBillingRule());
+        OffsetDateTime now = now();
+        projectMapper.updateEntity(request, name, now, project);
+        saveBillingRule(project, request.getBillingRule(), now);
         return toDTO(project);
     }
 
@@ -153,10 +169,46 @@ public class ProjectService {
     }
 
     private ProjectDTO toDTO(Project project) {
+        ProjectBillingRuleDTO billingRule = billingRuleRepository.findFirstByProjectIdOrderByEffectiveFromDesc(project.getId())
+            .map(billingRuleMapper::toDTO)
+            .orElse(null);
         List<TaskDTO> tasks = taskRepository.findByProjectIdOrderByNameAsc(project.getId()).stream()
             .map(projectMapper::toTaskDTO)
             .toList();
-        return projectMapper.toDTO(project, tasks);
+        return projectMapper.toDTO(project, billingRule, tasks);
+    }
+
+    private void saveBillingRule(Project project, UpsertProjectBillingRuleRequestDTO request, OffsetDateTime now) {
+        LocalDate effectiveFrom = request.getEffectiveFrom().withDayOfMonth(1);
+        ProjectBillingRule rule = billingRuleRepository.findByProjectIdAndEffectiveFrom(project.getId(), effectiveFrom)
+            .orElse(null);
+        if (rule == null) {
+            billingRuleRepository.save(billingRuleMapper.toEntity(request, project, now));
+            return;
+        }
+        billingRuleMapper.updateEntity(request, now, rule);
+    }
+
+    private void assertValidBillingRule(UpsertProjectBillingRuleRequestDTO rule) {
+        if (rule == null || rule.getType() == null || rule.getEffectiveFrom() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Billing rule is required");
+        }
+        if (rule.getType() == ProjectBillingRuleType.HOURLY) {
+            return;
+        }
+        if (rule.getType() == ProjectBillingRuleType.FIXED_MONTHLY) {
+            assertNonNegative(rule.getMonthlyAmount(), "Monthly amount is required");
+            return;
+        }
+        assertNonNegative(rule.getBaseAmount(), "Base amount is required");
+        assertNonNegative(rule.getIncludedHours(), "Included hours are required");
+        assertNonNegative(rule.getOverageHourlyRate(), "Overage hourly rate is required");
+    }
+
+    private void assertNonNegative(BigDecimal value, String message) {
+        if (value == null || value.compareTo(BigDecimal.ZERO) < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+        }
     }
 
     private void assertCanManageProjects(User user) {

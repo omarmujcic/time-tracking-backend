@@ -38,14 +38,18 @@ public class ReportController {
             @RequestParam(defaultValue = "false") boolean includeNoTask,
             @RequestParam(required = false) BigDecimal minRate,
             @RequestParam(required = false) BigDecimal maxRate,
+            @RequestParam(defaultValue = "false") boolean includeOrganizationEntries,
             @RequestParam(required = false) String description
     ) {
         return reportService.timeReport(user, view, startDate, endDate, timezone, userIds, projectNames, taskIds,
-                includeNoTask, minRate, maxRate, description);
+                includeNoTask, minRate, maxRate, includeOrganizationEntries, description);
     }
 
     @GetMapping("/filter-options")
-    public ReportFilterOptionsDTO filterOptions(@AuthenticationPrincipal User user) {
-        return reportService.filterOptions(user);
+    public ReportFilterOptionsDTO filterOptions(
+            @AuthenticationPrincipal User user,
+            @RequestParam(defaultValue = "false") boolean includeOrganizationEntries
+    ) {
+        return reportService.filterOptions(user, includeOrganizationEntries);
     }
 }

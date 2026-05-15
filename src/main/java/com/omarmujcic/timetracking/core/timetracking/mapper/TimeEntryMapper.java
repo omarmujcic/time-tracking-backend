@@ -19,6 +19,7 @@ import com.omarmujcic.timetracking.core.projects.entity.Project;
 import com.omarmujcic.timetracking.core.projects.entity.Task;
 import com.omarmujcic.timetracking.core.timetracking.dto.CreateTimeEntryRequestDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.StartTimerRequestDTO;
+import com.omarmujcic.timetracking.core.timetracking.dto.TimeEntryPageDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.TimeEntryResponseDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.TimeEntrySummaryDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.UpdateTimeEntryRequestDTO;
@@ -117,6 +118,12 @@ public interface TimeEntryMapper {
             entries.size(),
             entries.stream().anyMatch(entry -> entry.getEndedAt() == null)
         );
+    }
+
+    default TimeEntryPageDTO toPageDTO(List<TimeEntry> entries, int pageSize, boolean hasNext, boolean hasPrevious,
+            String nextCursor, String previousCursor, OffsetDateTime now) {
+        return new TimeEntryPageDTO(toResponseDTOs(entries, now), pageSize, hasNext, hasPrevious, nextCursor,
+                previousCursor);
     }
 
     default OffsetDateTime truncateToSeconds(OffsetDateTime value) {

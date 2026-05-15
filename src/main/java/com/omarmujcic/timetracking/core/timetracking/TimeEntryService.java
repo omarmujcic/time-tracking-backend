@@ -2,11 +2,15 @@ package com.omarmujcic.timetracking.core.timetracking;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -23,6 +27,7 @@ import com.omarmujcic.timetracking.core.projects.entity.Task;
 import com.omarmujcic.timetracking.core.projects.entity.TaskStatus;
 import com.omarmujcic.timetracking.core.timetracking.dto.CreateTimeEntryRequestDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.StartTimerRequestDTO;
+import com.omarmujcic.timetracking.core.timetracking.dto.TimeEntryPageDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.TimeEntryResponseDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.TimeEntrySummaryDTO;
 import com.omarmujcic.timetracking.core.timetracking.dto.UpdateTimeEntryRequestDTO;
@@ -41,25 +46,29 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class TimeEntryService {
 
+    private static final int DEFAULT_PAGE_SIZE = 100;
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final TimeEntryRepository timeEntryRepository;
     private final TimeEntryMapper timeEntryMapper;
     private final ProjectService projectService;
     private final WorkspaceService workspaceService;
 
     @Transactional(readOnly = true)
-    public List<TimeEntryResponseDTO> list(User user, YearMonth month, LocalDate day, String project, UUID userId,
-            List<String> projectNames, List<UUID> userIds) {
+    public TimeEntryPageDTO list(User user, YearMonth month, LocalDate day, String project, UUID userId,
+            List<String> projectNames, List<UUID> userIds, String timezone, LocalDate cursor, Integer requestedPageSize) {
         OffsetDateTime now = now();
-        return timeEntryMapper.toResponseDTOs(filteredEntries(user, month, day, project, userId, projectNames, userIds,
-                now), now);
+        ZoneId zone = zone(timezone);
+        return pageEntries(filteredEntries(user, month, day, project, userId, projectNames, userIds, zone), zone, cursor,
+                requestedPageSize, now);
     }
 
     @Transactional(readOnly = true)
     public TimeEntrySummaryDTO summary(User user, YearMonth month, LocalDate day, String project, UUID userId,
-            List<String> projectNames, List<UUID> userIds) {
+            List<String> projectNames, List<UUID> userIds, String timezone) {
         OffsetDateTime now = now();
         return timeEntryMapper.toSummaryDTO(filteredEntries(user, month, day, project, userId, projectNames, userIds,
-                now), now);
+                zone(timezone)), now);
     }
 
     @Transactional(readOnly = true)
@@ -74,16 +83,15 @@ public class TimeEntryService {
     @Transactional
     public TimeEntryResponseDTO start(User user, StartTimerRequestDTO request) {
         OffsetDateTime now = now();
-        if (timeEntryRepository.findByUserIdAndEndedAtIsNull(user.getId()).isPresent()) {
+        EntryWorkspace workspace = entryWorkspace(user);
+        if (activeTimer(user, workspace).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "An active timer is already running");
         }
 
-        EntryWorkspace workspace = entryWorkspace(user);
         Project project = request.getProjectId() == null ? null : resolveProject(user, request.getProjectId());
         Task task = project == null ? null : resolveTask(user, project, request.getTaskId());
         TimeEntry entry = timeEntryMapper.toTimerEntity(request, user, workspace.type(), workspace.organization(), project,
                 task, now);
-        assertNoOverlap(user, entry.getStartedAt(), null, null, now);
         return timeEntryMapper.toResponseDTO(timeEntryRepository.save(entry), now);
     }
 
@@ -102,7 +110,6 @@ public class TimeEntryService {
         }
 
         timeEntryMapper.stopTimer(now, entry);
-        assertNoOverlap(user, entry.getStartedAt(), entry.getEndedAt(), entry.getId(), now);
         return timeEntryMapper.toResponseDTO(entry, now);
     }
 
@@ -112,9 +119,8 @@ public class TimeEntryService {
         OffsetDateTime startedAt = timeEntryMapper.truncateToSeconds(request.getStartedAt());
         OffsetDateTime endedAt = timeEntryMapper.truncateToSeconds(request.getEndedAt());
         assertValidCompletedRange(startedAt, endedAt);
-        assertNoOverlap(user, startedAt, endedAt, null, now);
-
         EntryWorkspace workspace = entryWorkspace(user);
+
         Project project = resolveProject(user, request.getProjectId());
         Task task = resolveTask(user, project, request.getTaskId());
         TimeEntry entry = timeEntryMapper.toManualEntity(request, user, workspace.type(), workspace.organization(), project,
@@ -131,7 +137,7 @@ public class TimeEntryService {
 
         if (endedAt != null) {
             assertValidCompletedRange(startedAt, endedAt);
-        } else if (timeEntryRepository.findByUserIdAndEndedAtIsNull(user.getId())
+        } else if (activeTimer(user, workspaceForEntry(entry))
                 .filter(activeEntry -> !activeEntry.getId().equals(id))
                 .isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "An active timer is already running");
@@ -139,7 +145,6 @@ public class TimeEntryService {
 
         Project project = resolveProject(user, request.getProjectId());
         Task task = resolveTask(user, project, request.getTaskId());
-        assertNoOverlap(user, startedAt, endedAt, id, now);
         timeEntryMapper.updateEntity(request, project, task, startedAt, endedAt, now, entry);
         return timeEntryMapper.toResponseDTO(entry, now);
     }
@@ -155,7 +160,7 @@ public class TimeEntryService {
     }
 
     private List<TimeEntry> filteredEntries(User user, YearMonth month, LocalDate day, String project, UUID userId,
-            List<String> projectNames, List<UUID> userIds, OffsetDateTime now) {
+            List<String> projectNames, List<UUID> userIds, ZoneId zone) {
         Set<UUID> requestedUserIds = new HashSet<>();
         if (userIds != null) {
             requestedUserIds.addAll(userIds);
@@ -178,12 +183,58 @@ public class TimeEntryService {
         }
         return visibleEntries(user).stream()
             .filter(entry -> requestedUserIds.isEmpty() || requestedUserIds.contains(entry.getUser().getId()))
-            .filter(entry -> isWithinDateFilters(entry, month, day, now))
+            .filter(entry -> isWithinDateFilters(entry, month, day, zone))
             .filter(entry -> normalizedProject == null || normalizedProject.isBlank()
                 || timeEntryMapper.projectName(entry).toLowerCase().contains(normalizedProject))
             .filter(entry -> requestedProjectNames.isEmpty()
                 || requestedProjectNames.contains(timeEntryMapper.projectName(entry).toLowerCase(Locale.ROOT)))
             .toList();
+    }
+
+    private TimeEntryPageDTO pageEntries(List<TimeEntry> entries, ZoneId zone, LocalDate cursor,
+            Integer requestedPageSize, OffsetDateTime now) {
+        int pageSize = normalizedPageSize(requestedPageSize);
+        List<DayGroup> groups = dayGroups(entries, zone, cursor);
+        List<TimeEntry> pageEntries = new ArrayList<>();
+        LocalDate oldestIncludedDay = null;
+        int nextGroupIndex = 0;
+
+        for (DayGroup group : groups) {
+            boolean fitsPage = pageEntries.size() + group.entries().size() <= pageSize;
+            if (!pageEntries.isEmpty() && !fitsPage) {
+                break;
+            }
+            pageEntries.addAll(group.entries());
+            oldestIncludedDay = group.day();
+            nextGroupIndex++;
+        }
+
+        boolean hasNext = nextGroupIndex < groups.size();
+        boolean hasPrevious = cursor != null;
+        String nextCursor = hasNext && oldestIncludedDay != null ? oldestIncludedDay.toString() : null;
+        String previousCursor = hasPrevious ? cursor.toString() : null;
+        return timeEntryMapper.toPageDTO(pageEntries, pageSize, hasNext, hasPrevious, nextCursor, previousCursor, now);
+    }
+
+    private List<DayGroup> dayGroups(List<TimeEntry> entries, ZoneId zone, LocalDate cursor) {
+        Map<LocalDate, List<TimeEntry>> groups = new LinkedHashMap<>();
+        for (TimeEntry entry : entries) {
+            LocalDate entryDay = entry.getStartedAt().atZoneSameInstant(zone).toLocalDate();
+            if (cursor != null && !entryDay.isBefore(cursor)) {
+                continue;
+            }
+            groups.computeIfAbsent(entryDay, ignored -> new ArrayList<>()).add(entry);
+        }
+        return groups.entrySet().stream()
+            .map(group -> new DayGroup(group.getKey(), group.getValue()))
+            .toList();
+    }
+
+    private int normalizedPageSize(Integer requestedPageSize) {
+        if (requestedPageSize == null || requestedPageSize < 1) {
+            return DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(requestedPageSize, MAX_PAGE_SIZE);
     }
 
     private List<TimeEntry> visibleEntries(User user) {
@@ -239,6 +290,13 @@ public class TimeEntryService {
         return new EntryWorkspace(WorkspaceType.PERSONAL, null);
     }
 
+    private EntryWorkspace workspaceForEntry(TimeEntry entry) {
+        if (entry.getWorkspaceType() == WorkspaceType.ORGANIZATION) {
+            return new EntryWorkspace(WorkspaceType.ORGANIZATION, entry.getOrganization());
+        }
+        return new EntryWorkspace(WorkspaceType.PERSONAL, null);
+    }
+
     private java.util.Optional<TimeEntry> activeTimer(User user, EntryWorkspace workspace) {
         if (workspace.type() == WorkspaceType.ORGANIZATION) {
             return timeEntryRepository.findActiveOrganizationTimer(user.getId(), workspace.organization().getId());
@@ -246,8 +304,8 @@ public class TimeEntryService {
         return timeEntryRepository.findActivePersonalTimer(user.getId(), WorkspaceType.PERSONAL);
     }
 
-    private boolean isWithinDateFilters(TimeEntry entry, YearMonth month, LocalDate day, OffsetDateTime now) {
-        LocalDate entryDay = entry.getStartedAt().withOffsetSameInstant(ZoneOffset.UTC).toLocalDate();
+    private boolean isWithinDateFilters(TimeEntry entry, YearMonth month, LocalDate day, ZoneId zone) {
+        LocalDate entryDay = entry.getStartedAt().atZoneSameInstant(zone).toLocalDate();
         if (day != null) {
             return entryDay.equals(day);
         }
@@ -263,28 +321,21 @@ public class TimeEntryService {
         }
     }
 
-    private void assertNoOverlap(User user, OffsetDateTime startedAt, OffsetDateTime endedAt, UUID ignoredId,
-            OffsetDateTime now) {
-        boolean hasOverlap = timeEntryRepository.findByUserIdOrderByStartedAtDesc(user.getId()).stream()
-            .filter(entry -> ignoredId == null || !entry.getId().equals(ignoredId))
-            .anyMatch(entry -> overlaps(startedAt, endedAt, entry.getStartedAt(), entry.getEndedAt(), now));
-
-        if (hasOverlap) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Time entry overlaps an existing entry");
-        }
-    }
-
-    private boolean overlaps(OffsetDateTime startedAt, OffsetDateTime endedAt, OffsetDateTime existingStartedAt,
-            OffsetDateTime existingEndedAt, OffsetDateTime now) {
-        OffsetDateTime newEnd = endedAt == null ? OffsetDateTime.MAX : endedAt;
-        OffsetDateTime existingEnd = existingEndedAt == null ? OffsetDateTime.MAX : existingEndedAt;
-        return startedAt.isBefore(existingEnd) && existingStartedAt.isBefore(newEnd);
-    }
-
     private OffsetDateTime now() {
         return OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
     }
 
+    private ZoneId zone(String timezone) {
+        try {
+            return ZoneId.of(timezone == null || timezone.isBlank() ? "UTC" : timezone);
+        } catch (java.time.DateTimeException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid timezone");
+        }
+    }
+
     private record EntryWorkspace(WorkspaceType type, Organization organization) {
+    }
+
+    private record DayGroup(LocalDate day, List<TimeEntry> entries) {
     }
 }

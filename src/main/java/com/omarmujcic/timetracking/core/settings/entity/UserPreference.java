@@ -44,6 +44,9 @@ public class UserPreference {
     @Column(name = "grouped_entries_enabled", nullable = false)
     private boolean groupedEntriesEnabled;
 
+    @Column(name = "include_organization_entries_in_personal_reports", nullable = false)
+    private boolean includeOrganizationEntriesInPersonalReports;
+
     @Column(name = "date_format", nullable = false, length = 32)
     private String dateFormat;
 
