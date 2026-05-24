@@ -11,4 +11,6 @@ public class OrganizationRequestDTO {
     @NotBlank
     @Size(max = 160)
     private String name;
+
+    private Boolean membersCanCreateTasks;
 }

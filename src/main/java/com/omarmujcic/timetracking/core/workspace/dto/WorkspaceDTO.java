@@ -16,5 +16,6 @@ public class WorkspaceDTO {
     private String name;
     private String joinCode;
     private OrganizationRole role;
+    private boolean membersCanCreateTasks;
     private boolean active;
 }

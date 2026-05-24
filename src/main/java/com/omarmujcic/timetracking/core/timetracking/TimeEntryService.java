@@ -98,7 +98,7 @@ public class TimeEntryService {
     @Transactional
     public TimeEntryResponseDTO stop(User user, UUID id) {
         OffsetDateTime now = now();
-        TimeEntry entry = findOwnedEntry(user, id);
+        TimeEntry entry = findManageableEntry(user, id);
         if (entry.getEndedAt() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Timer is already stopped");
         }
@@ -131,13 +131,13 @@ public class TimeEntryService {
     @Transactional
     public TimeEntryResponseDTO update(User user, UUID id, UpdateTimeEntryRequestDTO request) {
         OffsetDateTime now = now();
-        TimeEntry entry = findOwnedEntry(user, id);
+        TimeEntry entry = findManageableEntry(user, id);
         OffsetDateTime startedAt = timeEntryMapper.truncateToSeconds(request.getStartedAt());
         OffsetDateTime endedAt = timeEntryMapper.truncateToSeconds(request.getEndedAt());
 
         if (endedAt != null) {
             assertValidCompletedRange(startedAt, endedAt);
-        } else if (activeTimer(user, workspaceForEntry(entry))
+        } else if (activeTimer(entry.getUser(), workspaceForEntry(entry))
                 .filter(activeEntry -> !activeEntry.getId().equals(id))
                 .isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "An active timer is already running");
@@ -151,12 +151,16 @@ public class TimeEntryService {
 
     @Transactional
     public void delete(User user, UUID id) {
-        timeEntryRepository.delete(findOwnedEntry(user, id));
+        timeEntryRepository.delete(findManageableEntry(user, id));
     }
 
-    private TimeEntry findOwnedEntry(User user, UUID id) {
-        return timeEntryRepository.findByIdAndUserId(id, user.getId())
+    private TimeEntry findManageableEntry(User user, UUID id) {
+        TimeEntry entry = timeEntryRepository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Time entry not found"));
+        if (entry.getUser().getId().equals(user.getId()) || canManageOrganizationEntry(user, entry)) {
+            return entry;
+        }
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Time entry not found");
     }
 
     private List<TimeEntry> filteredEntries(User user, YearMonth month, LocalDate day, String project, UUID userId,
@@ -258,6 +262,17 @@ public class TimeEntryService {
         }
         OrganizationRole role = workspaceService.activeOrganizationMembership(user).getRole();
         return role == OrganizationRole.OWNER || role == OrganizationRole.ADMIN;
+    }
+
+    private boolean canManageOrganizationEntry(User user, TimeEntry entry) {
+        if (user.getActiveWorkspaceType() != WorkspaceType.ORGANIZATION
+                || entry.getWorkspaceType() != WorkspaceType.ORGANIZATION
+                || entry.getOrganization() == null) {
+            return false;
+        }
+        OrganizationMember member = workspaceService.activeOrganizationMembership(user);
+        boolean canManage = member.getRole() == OrganizationRole.OWNER || member.getRole() == OrganizationRole.ADMIN;
+        return canManage && entry.getOrganization().getId().equals(member.getOrganization().getId());
     }
 
     private Project resolveProject(User user, UUID projectId) {

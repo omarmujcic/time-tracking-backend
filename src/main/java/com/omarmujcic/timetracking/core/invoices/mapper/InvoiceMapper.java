@@ -67,6 +67,7 @@ public interface InvoiceMapper {
     @Mapping(target = "joinCode", ignore = true)
     @Mapping(target = "createdBy", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "membersCanCreateTasks", ignore = true)
     @Mapping(target = "billingName", source = "party.name")
     @Mapping(target = "billingContactPerson", source = "party.contactPerson")
     @Mapping(target = "billingAddressLine1", source = "party.addressLine1")

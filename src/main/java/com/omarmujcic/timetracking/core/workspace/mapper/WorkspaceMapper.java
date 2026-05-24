@@ -22,6 +22,7 @@ public interface WorkspaceMapper {
     @Mapping(target = "name", constant = "Personal")
     @Mapping(target = "joinCode", ignore = true)
     @Mapping(target = "role", ignore = true)
+    @Mapping(target = "membersCanCreateTasks", constant = "false")
     @Mapping(target = "active", source = "active")
     WorkspaceDTO personalWorkspace(Boolean active);
 
@@ -30,6 +31,7 @@ public interface WorkspaceMapper {
     @Mapping(target = "name", source = "member.organization.name")
     @Mapping(target = "joinCode", source = "member.organization.joinCode")
     @Mapping(target = "role", source = "member.role")
+    @Mapping(target = "membersCanCreateTasks", source = "member.organization.membersCanCreateTasks")
     @Mapping(target = "active", source = "active")
     WorkspaceDTO organizationWorkspace(OrganizationMember member, boolean active);
 
@@ -37,6 +39,7 @@ public interface WorkspaceMapper {
     @Mapping(target = "name", source = "member.organization.name")
     @Mapping(target = "joinCode", source = "member.organization.joinCode")
     @Mapping(target = "role", source = "member.role")
+    @Mapping(target = "membersCanCreateTasks", source = "member.organization.membersCanCreateTasks")
     OrganizationDTO organizationDTO(OrganizationMember member);
 
     @Mapping(target = "userId", source = "user.id")
@@ -61,6 +64,7 @@ public interface WorkspaceMapper {
     @Mapping(target = "billingPhone", ignore = true)
     @Mapping(target = "billingTaxId", ignore = true)
     @Mapping(target = "billingRegistrationNumber", ignore = true)
+    @Mapping(target = "membersCanCreateTasks", expression = "java(request.getMembersCanCreateTasks() == null || request.getMembersCanCreateTasks())")
     Organization toOrganization(OrganizationRequestDTO request, String joinCode, User createdBy,
             java.time.OffsetDateTime now);
 
@@ -89,6 +93,7 @@ public interface WorkspaceMapper {
     @Mapping(target = "billingPhone", ignore = true)
     @Mapping(target = "billingTaxId", ignore = true)
     @Mapping(target = "billingRegistrationNumber", ignore = true)
+    @Mapping(target = "membersCanCreateTasks", expression = "java(request.getMembersCanCreateTasks() == null ? organization.isMembersCanCreateTasks() : request.getMembersCanCreateTasks())")
     void updateOrganization(OrganizationRequestDTO request, java.time.OffsetDateTime updatedAt,
             @MappingTarget Organization organization);
 
@@ -109,6 +114,7 @@ public interface WorkspaceMapper {
     @Mapping(target = "billingPhone", ignore = true)
     @Mapping(target = "billingTaxId", ignore = true)
     @Mapping(target = "billingRegistrationNumber", ignore = true)
+    @Mapping(target = "membersCanCreateTasks", ignore = true)
     void updateOrganizationCode(String joinCode, java.time.OffsetDateTime updatedAt,
             @MappingTarget Organization organization);
 

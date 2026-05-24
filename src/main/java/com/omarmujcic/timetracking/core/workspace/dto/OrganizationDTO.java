@@ -14,4 +14,5 @@ public class OrganizationDTO {
     private String name;
     private String joinCode;
     private OrganizationRole role;
+    private boolean membersCanCreateTasks;
 }

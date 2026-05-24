@@ -142,6 +142,10 @@ public class WorkspaceService {
         return role == OrganizationRole.OWNER || role == OrganizationRole.ADMIN;
     }
 
+    public boolean canCreateTasks(OrganizationMember member) {
+        return canManage(member.getRole()) || member.getOrganization().isMembersCanCreateTasks();
+    }
+
     private OrganizationMember requireManager(User user, UUID organizationId) {
         OrganizationMember member = membership(user, organizationId);
         if (!canManage(member.getRole())) {

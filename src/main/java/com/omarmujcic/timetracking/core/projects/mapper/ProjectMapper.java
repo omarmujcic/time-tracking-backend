@@ -15,6 +15,7 @@ import com.omarmujcic.timetracking.core.projects.dto.UpsertProjectRequestDTO;
 import com.omarmujcic.timetracking.core.projects.dto.UpsertTaskRequestDTO;
 import com.omarmujcic.timetracking.core.projects.entity.Project;
 import com.omarmujcic.timetracking.core.projects.entity.Task;
+import com.omarmujcic.timetracking.core.projects.entity.TaskStatus;
 import com.omarmujcic.timetracking.core.workspace.entity.Organization;
 
 @Mapper(componentModel = "spring", imports = UUID.class)
@@ -59,10 +60,11 @@ public interface ProjectMapper {
     @Mapping(target = "id", expression = "java(UUID.randomUUID())")
     @Mapping(target = "project", source = "project")
     @Mapping(target = "name", source = "name")
-    @Mapping(target = "status", source = "request.status")
+    @Mapping(target = "status", source = "status")
     @Mapping(target = "createdAt", source = "now")
     @Mapping(target = "updatedAt", source = "now")
-    Task toTaskEntity(UpsertTaskRequestDTO request, String name, Project project, java.time.OffsetDateTime now);
+    Task toTaskEntity(UpsertTaskRequestDTO request, String name, TaskStatus status, Project project,
+            java.time.OffsetDateTime now);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "project", ignore = true)

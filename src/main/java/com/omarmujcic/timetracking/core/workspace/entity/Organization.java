@@ -65,6 +65,9 @@ public class Organization {
     @Column(name = "billing_registration_number", length = 80)
     private String billingRegistrationNumber;
 
+    @Column(name = "members_can_create_tasks", nullable = false)
+    private boolean membersCanCreateTasks = true;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "created_by_user_id", nullable = false)
     private User createdBy;
