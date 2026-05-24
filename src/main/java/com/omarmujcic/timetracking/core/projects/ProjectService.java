@@ -23,6 +23,7 @@ import com.omarmujcic.timetracking.core.projects.entity.Project;
 import com.omarmujcic.timetracking.core.projects.entity.ProjectBillingRule;
 import com.omarmujcic.timetracking.core.projects.entity.ProjectBillingRuleType;
 import com.omarmujcic.timetracking.core.projects.entity.Task;
+import com.omarmujcic.timetracking.core.projects.entity.TaskStatus;
 import com.omarmujcic.timetracking.core.projects.mapper.ProjectBillingRuleMapper;
 import com.omarmujcic.timetracking.core.projects.mapper.ProjectMapper;
 import com.omarmujcic.timetracking.core.projects.repository.ProjectBillingRuleRepository;
@@ -105,14 +106,14 @@ public class ProjectService {
 
     @Transactional
     public TaskDTO createTask(User user, UUID projectId, UpsertTaskRequestDTO request) {
-        assertCanManageProjects(user);
+        TaskStatus status = taskStatusForNewTask(user, request);
         Project project = findAccessibleProject(user, projectId);
         String name = request.getName().trim();
         if (taskRepository.existsByProjectIdAndNameIgnoreCase(projectId, name)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Task name already exists");
         }
         OffsetDateTime now = now();
-        Task task = projectMapper.toTaskEntity(request, name, project, now);
+        Task task = projectMapper.toTaskEntity(request, name, status, project, now);
         return projectMapper.toTaskDTO(taskRepository.save(task));
     }
 
@@ -218,6 +219,17 @@ public class ProjectService {
         if (!workspaceService.canManage(workspaceService.activeOrganizationMembership(user).getRole())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Project manager access required");
         }
+    }
+
+    private TaskStatus taskStatusForNewTask(User user, UpsertTaskRequestDTO request) {
+        if (user.getActiveWorkspaceType() == WorkspaceType.PERSONAL) {
+            return request.getStatus();
+        }
+        OrganizationMember member = workspaceService.activeOrganizationMembership(user);
+        if (!workspaceService.canCreateTasks(member)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Task creation is disabled for organization members");
+        }
+        return workspaceService.canManage(member.getRole()) ? request.getStatus() : TaskStatus.ACTIVE;
     }
 
     private void assertUniqueProjectName(User user, UUID ignoredId, String name) {
