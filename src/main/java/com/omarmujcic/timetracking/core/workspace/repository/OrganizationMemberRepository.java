@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.omarmujcic.timetracking.core.workspace.entity.OrganizationMember;
+import com.omarmujcic.timetracking.core.workspace.entity.OrganizationRole;
 
 public interface OrganizationMemberRepository extends JpaRepository<OrganizationMember, UUID> {
 
@@ -26,4 +27,6 @@ public interface OrganizationMemberRepository extends JpaRepository<Organization
     Optional<OrganizationMember> findByOrganizationIdAndUserId(UUID organizationId, UUID userId);
 
     boolean existsByOrganizationIdAndUserId(UUID organizationId, UUID userId);
+
+    long countByOrganizationIdAndRole(UUID organizationId, OrganizationRole role);
 }

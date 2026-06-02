@@ -29,8 +29,32 @@ public class Organization {
     @Column(nullable = false, length = 160)
     private String name;
 
+    @Column(name = "legal_name", length = 160)
+    private String legalName;
+
     @Column(name = "join_code", nullable = false, unique = true, length = 24)
     private String joinCode;
+
+    @Column(name = "business_address_line_1", length = 220)
+    private String businessAddressLine1;
+
+    @Column(name = "business_address_line_2", length = 220)
+    private String businessAddressLine2;
+
+    @Column(name = "business_postal_code", length = 40)
+    private String businessPostalCode;
+
+    @Column(name = "business_city", length = 120)
+    private String businessCity;
+
+    @Column(name = "business_country", length = 120)
+    private String businessCountry;
+
+    @Column(nullable = false, length = 80)
+    private String timezone = "UTC";
+
+    @Column(name = "default_currency", nullable = false, length = 3)
+    private String defaultCurrency = "EUR";
 
     @Column(name = "billing_name", length = 160)
     private String billingName;

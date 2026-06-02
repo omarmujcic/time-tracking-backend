@@ -18,6 +18,7 @@ import com.omarmujcic.timetracking.core.workspace.dto.OrganizationDTO;
 import com.omarmujcic.timetracking.core.workspace.dto.OrganizationMemberDTO;
 import com.omarmujcic.timetracking.core.workspace.dto.OrganizationRequestDTO;
 import com.omarmujcic.timetracking.core.workspace.dto.SetActiveWorkspaceRequestDTO;
+import com.omarmujcic.timetracking.core.workspace.dto.UpdateOrganizationMemberRoleRequestDTO;
 import com.omarmujcic.timetracking.core.workspace.dto.WorkspaceDTO;
 import com.omarmujcic.timetracking.core.workspace.entity.Organization;
 import com.omarmujcic.timetracking.core.workspace.entity.OrganizationMember;
@@ -123,6 +124,42 @@ public class WorkspaceService {
             .toList();
     }
 
+    @Transactional
+    public OrganizationMemberDTO updateMemberRole(User user, UUID organizationId, UUID targetUserId,
+            UpdateOrganizationMemberRoleRequestDTO request) {
+        requireManager(user, organizationId);
+        if (user.getId().equals(targetUserId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot change your own organization role");
+        }
+        OrganizationMember target = membershipByUserId(organizationId, targetUserId);
+        if (target.getRole() == OrganizationRole.OWNER && request.getRole() != OrganizationRole.OWNER) {
+            assertAnotherOwnerExists(organizationId);
+        }
+        target.setRole(request.getRole());
+        target.getOrganization().setUpdatedAt(now());
+        return workspaceMapper.organizationMemberDTO(target);
+    }
+
+    @Transactional
+    public void removeMember(User user, UUID organizationId, UUID targetUserId) {
+        requireManager(user, organizationId);
+        if (user.getId().equals(targetUserId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot remove yourself from the organization");
+        }
+        OrganizationMember target = membershipByUserId(organizationId, targetUserId);
+        if (target.getRole() == OrganizationRole.OWNER) {
+            assertAnotherOwnerExists(organizationId);
+        }
+        User targetUser = target.getUser();
+        if (targetUser.getActiveWorkspaceType() == WorkspaceType.ORGANIZATION
+                && targetUser.getActiveOrganization() != null
+                && targetUser.getActiveOrganization().getId().equals(organizationId)) {
+            workspaceMapper.updateActiveWorkspace(WorkspaceType.PERSONAL, null, targetUser);
+        }
+        target.getOrganization().setUpdatedAt(now());
+        organizationMemberRepository.delete(target);
+    }
+
     @Transactional(readOnly = true)
     public OrganizationMember membership(User user, UUID organizationId) {
         return organizationMemberRepository.findByOrganizationIdAndUserId(organizationId, user.getId())
@@ -152,6 +189,17 @@ public class WorkspaceService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Organization manager access required");
         }
         return member;
+    }
+
+    private OrganizationMember membershipByUserId(UUID organizationId, UUID userId) {
+        return organizationMemberRepository.findByOrganizationIdAndUserId(organizationId, userId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organization member not found"));
+    }
+
+    private void assertAnotherOwnerExists(UUID organizationId) {
+        if (organizationMemberRepository.countByOrganizationIdAndRole(organizationId, OrganizationRole.OWNER) <= 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Organization must keep at least one owner");
+        }
     }
 
     private User managedUser(User user) {

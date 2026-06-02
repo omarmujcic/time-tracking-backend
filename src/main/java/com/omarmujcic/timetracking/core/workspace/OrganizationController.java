@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,6 +18,7 @@ import com.omarmujcic.timetracking.core.workspace.dto.JoinOrganizationRequestDTO
 import com.omarmujcic.timetracking.core.workspace.dto.OrganizationDTO;
 import com.omarmujcic.timetracking.core.workspace.dto.OrganizationMemberDTO;
 import com.omarmujcic.timetracking.core.workspace.dto.OrganizationRequestDTO;
+import com.omarmujcic.timetracking.core.workspace.dto.UpdateOrganizationMemberRoleRequestDTO;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -52,5 +54,16 @@ public class OrganizationController {
     @GetMapping("/{id}/members")
     public List<OrganizationMemberDTO> members(@AuthenticationPrincipal User user, @PathVariable UUID id) {
         return workspaceService.organizationMembers(user, id);
+    }
+
+    @PutMapping("/{id}/members/{userId}/role")
+    public OrganizationMemberDTO updateMemberRole(@AuthenticationPrincipal User user, @PathVariable UUID id,
+            @PathVariable UUID userId, @Valid @RequestBody UpdateOrganizationMemberRoleRequestDTO request) {
+        return workspaceService.updateMemberRole(user, id, userId, request);
+    }
+
+    @DeleteMapping("/{id}/members/{userId}")
+    public void removeMember(@AuthenticationPrincipal User user, @PathVariable UUID id, @PathVariable UUID userId) {
+        workspaceService.removeMember(user, id, userId);
     }
 }

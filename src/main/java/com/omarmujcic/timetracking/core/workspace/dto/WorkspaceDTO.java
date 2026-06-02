@@ -14,7 +14,15 @@ public class WorkspaceDTO {
     private WorkspaceType type;
     private UUID organizationId;
     private String name;
+    private String legalName;
     private String joinCode;
+    private String businessAddressLine1;
+    private String businessAddressLine2;
+    private String businessPostalCode;
+    private String businessCity;
+    private String businessCountry;
+    private String timezone;
+    private String defaultCurrency;
     private OrganizationRole role;
     private boolean membersCanCreateTasks;
     private boolean active;
