@@ -46,6 +46,10 @@ public class Notification {
     @JoinColumn(name = "created_by_user_id", nullable = false)
     private User createdBy;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "recipient_user_id")
+    private User recipientUser;
+
     @Enumerated(EnumType.STRING)
     private NotificationType type;
 
@@ -61,6 +65,19 @@ public class Notification {
 
     @Column(name = "subject_label", length = 220)
     private String subjectLabel;
+
+    @Column(name = "source_route", length = 260)
+    private String sourceRoute;
+
+    @Column(name = "source_label", length = 160)
+    private String sourceLabel;
+
+    @Column(name = "reminder_key", length = 220)
+    private String reminderKey;
+
+    private OffsetDateTime emailEscalationDueAt;
+
+    private OffsetDateTime emailEscalatedAt;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;

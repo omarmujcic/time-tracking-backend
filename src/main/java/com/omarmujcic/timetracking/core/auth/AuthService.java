@@ -1,6 +1,9 @@
 package com.omarmujcic.timetracking.core.auth;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Locale;
+import java.util.TimeZone;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -16,6 +19,8 @@ import com.omarmujcic.timetracking.core.auth.dto.UserResponseDTO;
 import com.omarmujcic.timetracking.core.auth.entity.User;
 import com.omarmujcic.timetracking.core.auth.mapper.UserMapper;
 import com.omarmujcic.timetracking.core.auth.repository.UserRepository;
+import com.omarmujcic.timetracking.core.settings.mapper.UserPreferenceMapper;
+import com.omarmujcic.timetracking.core.settings.repository.UserPreferenceRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -27,6 +32,8 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final UserMapper userMapper;
+    private final UserPreferenceMapper userPreferenceMapper;
+    private final UserPreferenceRepository userPreferenceRepository;
 
     @Transactional
     public AuthResponseDTO register(RegisterRequestDTO request) {
@@ -37,6 +44,11 @@ public class AuthService {
 
         User user = userMapper.toEntity(request, username, passwordEncoder.encode(request.getPassword()));
         User savedUser = userRepository.save(user);
+        userPreferenceRepository.save(userPreferenceMapper.defaultPreference(
+                savedUser,
+                TimeZone.getDefault().getID(),
+                now()
+        ));
         return authResponse(savedUser);
     }
 
@@ -62,5 +74,9 @@ public class AuthService {
 
     private String normalizeUsername(String username) {
         return username.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private OffsetDateTime now() {
+        return OffsetDateTime.now(ZoneOffset.UTC);
     }
 }

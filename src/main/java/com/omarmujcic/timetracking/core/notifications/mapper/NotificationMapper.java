@@ -11,6 +11,7 @@ import org.mapstruct.MappingTarget;
 import com.omarmujcic.timetracking.core.auth.entity.User;
 import com.omarmujcic.timetracking.core.notifications.dto.NotificationDTO;
 import com.omarmujcic.timetracking.core.notifications.dto.ProjectBillingIssueNotificationDTO;
+import com.omarmujcic.timetracking.core.notifications.dto.ReminderNotificationDTO;
 import com.omarmujcic.timetracking.core.notifications.entity.Notification;
 import com.omarmujcic.timetracking.core.notifications.entity.NotificationDismissal;
 import com.omarmujcic.timetracking.core.notifications.entity.NotificationStatus;
@@ -26,8 +27,12 @@ import com.omarmujcic.timetracking.core.workspace.entity.WorkspaceType;
 public interface NotificationMapper {
 
     @Mapping(target = "createdByUserId", source = "notification.createdBy.id")
+    @Mapping(target = "organizationId", source = "notification.organization.id")
     @Mapping(target = "createdByUsername", source = "notification.createdBy.username")
     @Mapping(target = "createdByDisplayName", source = "notification.createdBy.displayName")
+    @Mapping(target = "recipientUserId", source = "notification.recipientUser.id")
+    @Mapping(target = "recipientUsername", source = "notification.recipientUser.username")
+    @Mapping(target = "recipientDisplayName", source = "notification.recipientUser.displayName")
     @Mapping(target = "resolvedByUserId", source = "notification.resolvedBy.id")
     @Mapping(target = "resolvedByUsername", source = "notification.resolvedBy.username")
     @Mapping(target = "resolvedByDisplayName", source = "notification.resolvedBy.displayName")
@@ -41,17 +46,46 @@ public interface NotificationMapper {
     @Mapping(target = "workspaceUser", ignore = true)
     @Mapping(target = "organization", source = "notification.organization")
     @Mapping(target = "createdBy", source = "notification.creator")
+    @Mapping(target = "recipientUser", ignore = true)
     @Mapping(target = "type", expression = "java(NotificationType.PROJECT_BILLING_ISSUE)")
     @Mapping(target = "status", expression = "java(NotificationStatus.OPEN)")
     @Mapping(target = "message", source = "notification.message")
     @Mapping(target = "subjectType", constant = "PROJECT")
     @Mapping(target = "subjectId", source = "notification.projectId")
     @Mapping(target = "subjectLabel", source = "notification.projectName")
+    @Mapping(target = "sourceRoute", expression = "java(\"/manage/projects\")")
+    @Mapping(target = "sourceLabel", constant = "Open project settings")
+    @Mapping(target = "reminderKey", ignore = true)
+    @Mapping(target = "emailEscalationDueAt", ignore = true)
+    @Mapping(target = "emailEscalatedAt", ignore = true)
     @Mapping(target = "createdAt", source = "notification.createdAt")
     @Mapping(target = "updatedAt", source = "notification.createdAt")
     @Mapping(target = "resolvedAt", ignore = true)
     @Mapping(target = "resolvedBy", ignore = true)
     Notification toProjectBillingIssue(ProjectBillingIssueNotificationDTO notification);
+
+    @Mapping(target = "id", expression = "java(UUID.randomUUID())")
+    @Mapping(target = "workspaceType", source = "notification.workspaceType")
+    @Mapping(target = "workspaceUser", source = "notification.workspaceUser")
+    @Mapping(target = "organization", source = "notification.organization")
+    @Mapping(target = "createdBy", source = "notification.recipientUser")
+    @Mapping(target = "recipientUser", source = "notification.recipientUser")
+    @Mapping(target = "type", source = "notification.type")
+    @Mapping(target = "status", expression = "java(NotificationStatus.OPEN)")
+    @Mapping(target = "message", source = "notification.message")
+    @Mapping(target = "subjectType", source = "notification.subjectType")
+    @Mapping(target = "subjectId", source = "notification.subjectId")
+    @Mapping(target = "subjectLabel", source = "notification.subjectLabel")
+    @Mapping(target = "sourceRoute", source = "notification.sourceRoute")
+    @Mapping(target = "sourceLabel", source = "notification.sourceLabel")
+    @Mapping(target = "reminderKey", source = "notification.reminderKey")
+    @Mapping(target = "emailEscalationDueAt", source = "notification.emailEscalationDueAt")
+    @Mapping(target = "emailEscalatedAt", ignore = true)
+    @Mapping(target = "createdAt", source = "notification.createdAt")
+    @Mapping(target = "updatedAt", source = "notification.createdAt")
+    @Mapping(target = "resolvedAt", ignore = true)
+    @Mapping(target = "resolvedBy", ignore = true)
+    Notification toReminder(ReminderNotificationDTO notification);
 
     @BeanMapping(ignoreByDefault = true)
     @Mapping(target = "status", expression = "java(NotificationStatus.RESOLVED)")

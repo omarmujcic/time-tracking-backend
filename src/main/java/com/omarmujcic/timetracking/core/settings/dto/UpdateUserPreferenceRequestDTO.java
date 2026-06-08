@@ -23,6 +23,14 @@ public class UpdateUserPreferenceRequestDTO {
 
     private boolean includeOrganizationEntriesInPersonalReports;
 
+    private boolean longTimerRemindersEnabled;
+
+    private boolean missingDailyTimeRemindersEnabled;
+
+    private boolean invoiceRemindersEnabled;
+
+    private boolean browserPushEnabled;
+
     @NotBlank
     @Size(max = 32)
     private String dateFormat;

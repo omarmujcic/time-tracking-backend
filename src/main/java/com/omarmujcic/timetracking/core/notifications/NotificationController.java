@@ -17,6 +17,8 @@ import com.omarmujcic.timetracking.core.notifications.dto.CreateProjectBillingIs
 import com.omarmujcic.timetracking.core.notifications.dto.NotificationCountDTO;
 import com.omarmujcic.timetracking.core.notifications.dto.NotificationDTO;
 import com.omarmujcic.timetracking.core.notifications.dto.NotificationStatusFilter;
+import com.omarmujcic.timetracking.core.notifications.dto.PushPublicKeyDTO;
+import com.omarmujcic.timetracking.core.notifications.dto.PushSubscriptionRequestDTO;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final NotificationPushSubscriptionService pushSubscriptionService;
 
     @GetMapping
     public List<NotificationDTO> list(@AuthenticationPrincipal User user,
@@ -37,6 +40,28 @@ public class NotificationController {
     @GetMapping("/open-count")
     public NotificationCountDTO openCount(@AuthenticationPrincipal User user) {
         return new NotificationCountDTO(notificationService.openCount(user));
+    }
+
+    @GetMapping("/push/public-key")
+    public PushPublicKeyDTO pushPublicKey() {
+        return pushSubscriptionService.publicKey();
+    }
+
+    @PostMapping("/push/subscriptions")
+    public void registerPushSubscription(@AuthenticationPrincipal User user,
+            @Valid @RequestBody PushSubscriptionRequestDTO request) {
+        pushSubscriptionService.register(user, request);
+    }
+
+    @PostMapping("/push/unsubscribe")
+    public void unsubscribePushSubscription(@AuthenticationPrincipal User user,
+            @Valid @RequestBody PushSubscriptionRequestDTO request) {
+        pushSubscriptionService.unsubscribe(user, request);
+    }
+
+    @PostMapping("/push/disable-all")
+    public void disablePushSubscriptions(@AuthenticationPrincipal User user) {
+        pushSubscriptionService.disableAll(user);
     }
 
     @PostMapping("/project-billing-issues")

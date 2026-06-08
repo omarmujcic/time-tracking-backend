@@ -13,6 +13,10 @@ public class UserPreferenceDTO {
     private ThemeMode themeMode;
     private boolean groupedEntriesEnabled;
     private boolean includeOrganizationEntriesInPersonalReports;
+    private boolean longTimerRemindersEnabled;
+    private boolean missingDailyTimeRemindersEnabled;
+    private boolean invoiceRemindersEnabled;
+    private boolean browserPushEnabled;
     private String dateFormat;
     private DecimalSeparator decimalSeparator;
     private String timezone;

@@ -25,3 +25,14 @@ app:
     jwt:
       secret: ${JWT_SECRET:dev-only-change-this-secret-before-production}
       expiration-minutes: ${JWT_EXPIRATION_MINUTES:120}
+  notifications:
+    reminders:
+      scan-delay-ms: ${APP_REMINDER_SCAN_DELAY_MS:300000}
+      initial-delay-ms: ${APP_REMINDER_INITIAL_DELAY_MS:60000}
+      long-timer-hours: ${APP_LONG_TIMER_REMINDER_HOURS:8}
+      missing-daily-time-hour: ${APP_MISSING_DAILY_TIME_HOUR:18}
+      email-escalation-hours: ${APP_REMINDER_EMAIL_ESCALATION_HOURS:12}
+    push:
+      public-key: ${APP_PUSH_PUBLIC_KEY:}
+      private-key: ${APP_PUSH_PRIVATE_KEY:}
+      subject: ${APP_PUSH_SUBJECT:mailto:noreply@trackz.local}
