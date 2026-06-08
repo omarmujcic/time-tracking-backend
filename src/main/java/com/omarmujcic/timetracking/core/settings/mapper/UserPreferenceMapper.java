@@ -18,6 +18,10 @@ public interface UserPreferenceMapper {
     @Mapping(target = "themeMode", constant = "SYSTEM")
     @Mapping(target = "groupedEntriesEnabled", constant = "true")
     @Mapping(target = "includeOrganizationEntriesInPersonalReports", constant = "true")
+    @Mapping(target = "longTimerRemindersEnabled", constant = "true")
+    @Mapping(target = "missingDailyTimeRemindersEnabled", constant = "true")
+    @Mapping(target = "invoiceRemindersEnabled", constant = "true")
+    @Mapping(target = "browserPushEnabled", constant = "false")
     @Mapping(target = "dateFormat", constant = "YYYY-MM-DD")
     @Mapping(target = "decimalSeparator", constant = "DOT")
     @Mapping(target = "timezone", source = "timezone")
@@ -26,6 +30,7 @@ public interface UserPreferenceMapper {
 
     @Mapping(target = "user", ignore = true)
     @Mapping(target = "language", expression = "java(request.getLanguage().trim())")
+    @Mapping(target = "browserPushEnabled", ignore = true)
     @Mapping(target = "dateFormat", expression = "java(request.getDateFormat().trim())")
     @Mapping(target = "timezone", expression = "java(request.getTimezone().trim())")
     @Mapping(target = "updatedAt", source = "updatedAt")

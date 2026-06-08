@@ -3,6 +3,7 @@ package com.omarmujcic.timetracking.core.timetracking.repository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.OffsetDateTime;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -23,6 +24,21 @@ public interface TimeEntryRepository extends JpaRepository<TimeEntry, UUID> {
     Optional<TimeEntry> findByIdAndUserId(UUID id, UUID userId);
 
     Optional<TimeEntry> findByUserIdAndEndedAtIsNull(UUID userId);
+
+    @Query("""
+            select entry from TimeEntry entry
+            join fetch entry.user
+            left join fetch entry.organization
+            left join fetch entry.project
+            left join fetch entry.task
+            where entry.endedAt is null
+              and entry.startedAt <= :startedBefore
+            order by entry.startedAt asc
+            """)
+    List<TimeEntry> findActiveTimersStartedBefore(@Param("startedBefore") OffsetDateTime startedBefore);
+
+    boolean existsByUserIdAndStartedAtGreaterThanEqualAndStartedAtLessThan(UUID userId, OffsetDateTime startedAt,
+            OffsetDateTime endedAt);
 
     @Query("""
             select entry from TimeEntry entry

@@ -16,6 +16,7 @@ import com.omarmujcic.timetracking.core.notifications.dto.CreateProjectBillingIs
 import com.omarmujcic.timetracking.core.notifications.dto.NotificationDTO;
 import com.omarmujcic.timetracking.core.notifications.dto.NotificationStatusFilter;
 import com.omarmujcic.timetracking.core.notifications.dto.ProjectBillingIssueNotificationDTO;
+import com.omarmujcic.timetracking.core.notifications.dto.ReminderNotificationDTO;
 import com.omarmujcic.timetracking.core.notifications.entity.Notification;
 import com.omarmujcic.timetracking.core.notifications.entity.NotificationStatus;
 import com.omarmujcic.timetracking.core.notifications.mapper.NotificationMapper;
@@ -38,11 +39,21 @@ public class NotificationService {
     private final NotificationMapper notificationMapper;
     private final WorkspaceService workspaceService;
     private final ProjectService projectService;
+    private final WebPushDeliveryService webPushDeliveryService;
 
     @Transactional(readOnly = true)
     public List<NotificationDTO> list(User user, NotificationStatusFilter filter) {
         if (user.getActiveWorkspaceType() == WorkspaceType.PERSONAL) {
-            return List.of();
+            NotificationStatus status = statusFilter(filter);
+            return notificationRepository.findVisiblePersonalNotifications(
+                    WorkspaceType.PERSONAL,
+                    user.getId(),
+                    status
+            )
+                .stream()
+                .sorted(notificationComparator(filter))
+                .map(notification -> toDTO(notification, user, false))
+                .toList();
         }
         OrganizationMember member = workspaceService.activeOrganizationMembership(user);
         boolean manager = workspaceService.canManage(member.getRole());
@@ -63,25 +74,30 @@ public class NotificationService {
     @Transactional(readOnly = true)
     public long openCount(User user) {
         if (user.getActiveWorkspaceType() == WorkspaceType.PERSONAL) {
-            return 0;
+            return notificationRepository.countVisiblePersonalNotifications(
+                    WorkspaceType.PERSONAL,
+                    user.getId(),
+                    NotificationStatus.OPEN
+            );
         }
         OrganizationMember member = workspaceService.activeOrganizationMembership(user);
         boolean manager = workspaceService.canManage(member.getRole());
+        long visibleOpenCount = notificationRepository.countVisibleOrganizationNotifications(
+                WorkspaceType.ORGANIZATION,
+                member.getOrganization().getId(),
+                member.getUser().getId(),
+                manager,
+                NotificationStatus.OPEN
+        );
         if (!manager) {
-            return notificationRepository.countResolvedByOtherUserCreatorNotifications(
+            return visibleOpenCount + notificationRepository.countResolvedByOtherUserCreatorNotifications(
                     WorkspaceType.ORGANIZATION,
                     member.getOrganization().getId(),
                     member.getUser().getId(),
                     NotificationStatus.RESOLVED
             );
         }
-        return notificationRepository.countVisibleOrganizationNotifications(
-                WorkspaceType.ORGANIZATION,
-                member.getOrganization().getId(),
-                member.getUser().getId(),
-                true,
-                NotificationStatus.OPEN
-        );
+        return visibleOpenCount;
     }
 
     @Transactional
@@ -107,7 +123,24 @@ public class NotificationService {
     }
 
     @Transactional
+    public void createReminder(ReminderNotificationDTO reminder) {
+        if (notificationRepository.existsByReminderKey(reminder.reminderKey())) {
+            return;
+        }
+        Notification notification = notificationMapper.toReminder(reminder);
+        Notification saved = notificationRepository.save(notification);
+        webPushDeliveryService.send(reminder.recipientUser(), saved);
+    }
+
+    @Transactional
     public NotificationDTO resolve(User user, UUID id) {
+        if (user.getActiveWorkspaceType() == WorkspaceType.PERSONAL) {
+            Notification notification = findPersonalNotification(user, id);
+            if (notification.getStatus() != NotificationStatus.RESOLVED) {
+                notificationMapper.resolve(now(), user, notification);
+            }
+            return toDTO(notification, user, false);
+        }
         OrganizationMember member = requireOrganizationWorkspace(user);
         Notification notification = findActionableNotification(member, id);
         assertCanChangeState(member, notification);
@@ -119,6 +152,13 @@ public class NotificationService {
 
     @Transactional
     public NotificationDTO reopen(User user, UUID id) {
+        if (user.getActiveWorkspaceType() == WorkspaceType.PERSONAL) {
+            Notification notification = findPersonalNotification(user, id);
+            if (notification.getStatus() != NotificationStatus.OPEN) {
+                notificationMapper.reopen(now(), notification);
+            }
+            return toDTO(notification, user, false);
+        }
         OrganizationMember member = requireOrganizationWorkspace(user);
         Notification notification = findActionableNotification(member, id);
         assertCanChangeState(member, notification);
@@ -130,6 +170,14 @@ public class NotificationService {
 
     @Transactional
     public void dismiss(User user, UUID id) {
+        if (user.getActiveWorkspaceType() == WorkspaceType.PERSONAL) {
+            Notification notification = findPersonalNotification(user, id);
+            if (dismissalRepository.existsByNotificationIdAndUserId(notification.getId(), user.getId())) {
+                return;
+            }
+            dismissalRepository.save(notificationMapper.toDismissal(notification, user, now()));
+            return;
+        }
         OrganizationMember member = requireOrganizationWorkspace(user);
         Notification notification = findVisibleNotification(member, id);
         if (dismissalRepository.existsByNotificationIdAndUserId(notification.getId(), member.getUser().getId())) {
@@ -147,22 +195,23 @@ public class NotificationService {
 
     private Notification findVisibleNotification(OrganizationMember member, UUID id) {
         Notification notification = findOrganizationNotification(member, id);
-        if (!canView(member, notification)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found");
-        }
+        assertCanView(member, notification);
         return notification;
     }
 
     private Notification findActionableNotification(OrganizationMember member, UUID id) {
         Notification notification = findOrganizationNotification(member, id);
-        if (!canView(member, notification)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found");
-        }
+        assertCanView(member, notification);
         return notification;
     }
 
     private Notification findOrganizationNotification(OrganizationMember member, UUID id) {
         return notificationRepository.findByIdAndOrganizationId(id, member.getOrganization().getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found"));
+    }
+
+    private Notification findPersonalNotification(User user, UUID id) {
+        return notificationRepository.findByIdAndWorkspaceUserId(id, user.getId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found"));
     }
 
@@ -172,20 +221,40 @@ public class NotificationService {
         }
     }
 
-    private boolean canView(OrganizationMember member, Notification notification) {
-        return workspaceService.canManage(member.getRole()) || createdByCurrentUser(member, notification);
+    private void assertCanView(OrganizationMember member, Notification notification) {
+        if (!canChangeState(member, notification)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found");
+        }
     }
 
     private boolean canChangeState(OrganizationMember member, Notification notification) {
-        return workspaceService.canManage(member.getRole()) || createdByCurrentUser(member, notification);
+        return workspaceService.canManage(member.getRole()) || createdByCurrentUser(member, notification)
+            || recipientIsCurrentUser(member.getUser(), notification);
     }
 
     private boolean createdByCurrentUser(OrganizationMember member, Notification notification) {
         return notification.getCreatedBy().getId().equals(member.getUser().getId());
     }
 
+    private boolean recipientIsCurrentUser(User user, Notification notification) {
+        return notification.getRecipientUser() != null && notification.getRecipientUser().getId().equals(user.getId());
+    }
+
     private NotificationDTO toDTO(Notification notification, OrganizationMember member, boolean manager) {
-        boolean canChangeState = manager || createdByCurrentUser(member, notification);
+        boolean canChangeState = manager || createdByCurrentUser(member, notification)
+            || recipientIsCurrentUser(member.getUser(), notification);
+        return notificationMapper.toDTO(
+                notification,
+                notification.getStatus() == NotificationStatus.OPEN && canChangeState,
+                notification.getStatus() == NotificationStatus.RESOLVED && canChangeState,
+                true
+        );
+    }
+
+    private NotificationDTO toDTO(Notification notification, User user, boolean manager) {
+        boolean canChangeState = manager
+            || notification.getCreatedBy().getId().equals(user.getId())
+            || recipientIsCurrentUser(user, notification);
         return notificationMapper.toDTO(
                 notification,
                 notification.getStatus() == NotificationStatus.OPEN && canChangeState,

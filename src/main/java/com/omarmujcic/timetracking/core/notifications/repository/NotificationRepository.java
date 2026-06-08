@@ -18,8 +18,48 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
         select notification
         from Notification notification
         where notification.workspaceType = :workspaceType
+          and notification.workspaceUser.id = :userId
+          and (:status is null or notification.status = :status)
+          and not exists (
+              select dismissal.id
+              from NotificationDismissal dismissal
+              where dismissal.notification.id = notification.id
+                and dismissal.user.id = :userId
+          )
+        order by notification.createdAt desc
+        """)
+    List<Notification> findVisiblePersonalNotifications(
+            @Param("workspaceType") WorkspaceType workspaceType,
+            @Param("userId") UUID userId,
+            @Param("status") NotificationStatus status);
+
+    @Query("""
+        select count(notification)
+        from Notification notification
+        where notification.workspaceType = :workspaceType
+          and notification.workspaceUser.id = :userId
+          and notification.status = :status
+          and not exists (
+              select dismissal.id
+              from NotificationDismissal dismissal
+              where dismissal.notification.id = notification.id
+                and dismissal.user.id = :userId
+          )
+        """)
+    long countVisiblePersonalNotifications(
+            @Param("workspaceType") WorkspaceType workspaceType,
+            @Param("userId") UUID userId,
+            @Param("status") NotificationStatus status);
+
+    @Query("""
+        select notification
+        from Notification notification
+        where notification.workspaceType = :workspaceType
           and notification.organization.id = :organizationId
-          and (:manager = true or notification.createdBy.id = :userId)
+          and (
+              (notification.recipientUser is null and (:manager = true or notification.createdBy.id = :userId))
+              or notification.recipientUser.id = :userId
+          )
           and (:status is null or notification.status = :status)
           and not exists (
               select dismissal.id
@@ -42,7 +82,10 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
         where notification.workspaceType = :workspaceType
           and notification.organization.id = :organizationId
           and notification.status = :status
-          and (:manager = true or notification.createdBy.id = :userId)
+          and (
+              (notification.recipientUser is null and (:manager = true or notification.createdBy.id = :userId))
+              or notification.recipientUser.id = :userId
+          )
           and not exists (
               select dismissal.id
               from NotificationDismissal dismissal
@@ -80,4 +123,8 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
             @Param("status") NotificationStatus status);
 
     Optional<Notification> findByIdAndOrganizationId(UUID id, UUID organizationId);
+
+    Optional<Notification> findByIdAndWorkspaceUserId(UUID id, UUID userId);
+
+    boolean existsByReminderKey(String reminderKey);
 }

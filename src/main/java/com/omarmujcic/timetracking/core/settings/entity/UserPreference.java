@@ -47,6 +47,18 @@ public class UserPreference {
     @Column(name = "include_organization_entries_in_personal_reports", nullable = false)
     private boolean includeOrganizationEntriesInPersonalReports;
 
+    @Column(name = "long_timer_reminders_enabled", nullable = false)
+    private boolean longTimerRemindersEnabled = true;
+
+    @Column(name = "missing_daily_time_reminders_enabled", nullable = false)
+    private boolean missingDailyTimeRemindersEnabled = true;
+
+    @Column(name = "invoice_reminders_enabled", nullable = false)
+    private boolean invoiceRemindersEnabled = true;
+
+    @Column(name = "browser_push_enabled", nullable = false)
+    private boolean browserPushEnabled;
+
     @Column(name = "date_format", nullable = false, length = 32)
     private String dateFormat;
 
