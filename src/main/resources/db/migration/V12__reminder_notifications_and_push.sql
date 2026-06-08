@@ -4,15 +4,6 @@ alter table user_preferences
     add column invoice_reminders_enabled boolean not null default true,
     add column browser_push_enabled boolean not null default false;
 
-insert into user_preferences (user_id, updated_at)
-select users.id, now()
-from users
-where not exists (
-    select 1
-    from user_preferences
-    where user_preferences.user_id = users.id
-);
-
 alter table notifications
     drop constraint chk_notifications_type;
 
@@ -56,7 +47,7 @@ create table notification_push_subscriptions (
     created_at timestamptz not null,
     updated_at timestamptz not null,
     last_failed_at timestamptz,
-    unique (endpoint)
+    unique (user_id, endpoint)
 );
 
 create index idx_notification_push_subscriptions_user
