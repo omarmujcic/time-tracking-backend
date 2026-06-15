@@ -20,11 +20,14 @@ public class UpsertProjectRequestDTO {
     @Size(max = 160)
     private String name;
 
+    @Size(max = 12)
+    private String ticketPrefix;
+
     @NotNull
     private ProjectStatus status;
 
     @NotNull
-    @DecimalMin(value = "0.01")
+    @DecimalMin(value = "0.00")
     @Digits(integer = 8, fraction = 2)
     private BigDecimal hourlyRate;
 

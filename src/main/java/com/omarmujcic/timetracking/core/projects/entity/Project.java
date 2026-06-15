@@ -41,6 +41,9 @@ public class Project {
     @Column(nullable = false, length = 160)
     private String name;
 
+    @Column(name = "ticket_prefix", nullable = false, length = 12)
+    private String ticketPrefix;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ProjectStatus status;

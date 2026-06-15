@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -41,6 +42,10 @@ import lombok.RequiredArgsConstructor;
 public class ProjectService {
 
     private static final String DEFAULT_CURRENCY = "EUR";
+    private static final int DEFAULT_TICKET_PREFIX_LENGTH = 3;
+    private static final int MIN_TICKET_PREFIX_LENGTH = 2;
+    private static final int MAX_TICKET_PREFIX_LENGTH = 12;
+    private static final String FALLBACK_TICKET_PREFIX = "PR";
 
     private final ProjectRepository projectRepository;
     private final ProjectBillingRuleRepository billingRuleRepository;
@@ -61,7 +66,10 @@ public class ProjectService {
     public ProjectDTO create(User user, UpsertProjectRequestDTO request) {
         assertCanManageProjects(user);
         String name = request.getName().trim();
-        assertUniqueProjectName(user, null, name);
+        List<Project> projects = projectsForActiveWorkspace(user);
+        assertUniqueProjectName(projects, null, name);
+        String ticketPrefix = ticketPrefixForRequest(request, projects, null, name);
+        assertUniqueTicketPrefix(projects, null, ticketPrefix);
         assertValidBillingRule(request.getBillingRule());
 
         OffsetDateTime now = now();
@@ -71,6 +79,7 @@ public class ProjectService {
         Project project = projectMapper.toEntity(
                 request,
                 name,
+                ticketPrefix,
                 member == null ? user : null,
                 member == null ? null : member.getOrganization(),
                 DEFAULT_CURRENCY,
@@ -86,10 +95,13 @@ public class ProjectService {
         assertCanManageProjects(user);
         Project project = findAccessibleProject(user, id);
         String name = request.getName().trim();
-        assertUniqueProjectName(user, id, name);
+        List<Project> projects = projectsForActiveWorkspace(user);
+        assertUniqueProjectName(projects, id, name);
+        String ticketPrefix = ticketPrefixForRequest(request, projects, id, name);
+        assertUniqueTicketPrefix(projects, id, ticketPrefix);
         assertValidBillingRule(request.getBillingRule());
         OffsetDateTime now = now();
-        projectMapper.updateEntity(request, name, now, project);
+        projectMapper.updateEntity(request, name, ticketPrefix, now, project);
         saveBillingRule(project, request.getBillingRule(), now);
         return toDTO(project);
     }
@@ -232,13 +244,73 @@ public class ProjectService {
         return workspaceService.canManage(member.getRole()) ? request.getStatus() : TaskStatus.ACTIVE;
     }
 
-    private void assertUniqueProjectName(User user, UUID ignoredId, String name) {
-        List<Project> projects = projectsForActiveWorkspace(user);
+    private void assertUniqueProjectName(List<Project> projects, UUID ignoredId, String name) {
         boolean duplicate = projects.stream()
             .anyMatch(project -> !project.getId().equals(ignoredId) && project.getName().equalsIgnoreCase(name));
         if (duplicate) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project name already exists");
         }
+    }
+
+    private String ticketPrefixForRequest(UpsertProjectRequestDTO request, List<Project> projects, UUID ignoredId,
+            String name) {
+        String requestedPrefix = normalizeTicketPrefix(request.getTicketPrefix());
+        if (requestedPrefix != null) {
+            return requestedPrefix;
+        }
+        return uniqueGeneratedTicketPrefix(projects, ignoredId, name);
+    }
+
+    private String normalizeTicketPrefix(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        String normalized = value.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+        if (normalized.length() < MIN_TICKET_PREFIX_LENGTH || normalized.length() > MAX_TICKET_PREFIX_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Project ticket prefix must be 2 to 12 letters or numbers");
+        }
+        return normalized;
+    }
+
+    private String uniqueGeneratedTicketPrefix(List<Project> projects, UUID ignoredId, String name) {
+        String base = baseTicketPrefix(name);
+        String candidate = base;
+        int suffix = 2;
+        while (ticketPrefixExists(projects, ignoredId, candidate)) {
+            String suffixValue = String.valueOf(suffix);
+            int baseLength = Math.min(base.length(), MAX_TICKET_PREFIX_LENGTH - suffixValue.length());
+            candidate = base.substring(0, Math.max(MIN_TICKET_PREFIX_LENGTH, baseLength)) + suffixValue;
+            suffix++;
+        }
+        return candidate;
+    }
+
+    private String baseTicketPrefix(String name) {
+        String normalized = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+        if (normalized.length() >= DEFAULT_TICKET_PREFIX_LENGTH) {
+            return normalized.substring(0, DEFAULT_TICKET_PREFIX_LENGTH);
+        }
+        if (normalized.length() == MIN_TICKET_PREFIX_LENGTH) {
+            return normalized;
+        }
+        if (normalized.length() == 1) {
+            return normalized + "X";
+        }
+        return FALLBACK_TICKET_PREFIX;
+    }
+
+    private void assertUniqueTicketPrefix(List<Project> projects, UUID ignoredId, String ticketPrefix) {
+        if (ticketPrefixExists(projects, ignoredId, ticketPrefix)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project ticket prefix already exists");
+        }
+    }
+
+    private boolean ticketPrefixExists(List<Project> projects, UUID ignoredId, String ticketPrefix) {
+        return projects.stream()
+            .anyMatch(project -> !project.getId().equals(ignoredId)
+                    && project.getTicketPrefix() != null
+                    && project.getTicketPrefix().equalsIgnoreCase(ticketPrefix));
     }
 
     private OffsetDateTime now() {
