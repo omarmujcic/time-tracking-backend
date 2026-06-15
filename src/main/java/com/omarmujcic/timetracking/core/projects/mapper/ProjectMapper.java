@@ -23,6 +23,7 @@ public interface ProjectMapper {
 
     @Mapping(target = "id", source = "project.id")
     @Mapping(target = "name", source = "project.name")
+    @Mapping(target = "ticketPrefix", source = "project.ticketPrefix")
     @Mapping(target = "status", source = "project.status")
     @Mapping(target = "hourlyRate", source = "project.hourlyRate")
     @Mapping(target = "currency", source = "project.currency")
@@ -37,13 +38,14 @@ public interface ProjectMapper {
     @Mapping(target = "user", source = "user")
     @Mapping(target = "organization", source = "organization")
     @Mapping(target = "name", source = "name")
+    @Mapping(target = "ticketPrefix", source = "ticketPrefix")
     @Mapping(target = "status", source = "request.status")
     @Mapping(target = "hourlyRate", expression = "java(request.getHourlyRate().setScale(2, java.math.RoundingMode.HALF_UP))")
     @Mapping(target = "currency", source = "currency")
     @Mapping(target = "createdAt", source = "now")
     @Mapping(target = "updatedAt", source = "now")
-    Project toEntity(UpsertProjectRequestDTO request, String name, User user, Organization organization, String currency,
-            java.time.OffsetDateTime now);
+    Project toEntity(UpsertProjectRequestDTO request, String name, String ticketPrefix, User user,
+            Organization organization, String currency, java.time.OffsetDateTime now);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "user", ignore = true)
@@ -51,10 +53,11 @@ public interface ProjectMapper {
     @Mapping(target = "currency", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "name", source = "name")
+    @Mapping(target = "ticketPrefix", source = "ticketPrefix")
     @Mapping(target = "status", source = "request.status")
     @Mapping(target = "hourlyRate", expression = "java(request.getHourlyRate().setScale(2, java.math.RoundingMode.HALF_UP))")
     @Mapping(target = "updatedAt", source = "now")
-    void updateEntity(UpsertProjectRequestDTO request, String name, java.time.OffsetDateTime now,
+    void updateEntity(UpsertProjectRequestDTO request, String name, String ticketPrefix, java.time.OffsetDateTime now,
             @MappingTarget Project project);
 
     @Mapping(target = "id", expression = "java(UUID.randomUUID())")

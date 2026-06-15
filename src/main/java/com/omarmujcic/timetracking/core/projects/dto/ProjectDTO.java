@@ -14,6 +14,7 @@ import lombok.Setter;
 public class ProjectDTO {
     private UUID id;
     private String name;
+    private String ticketPrefix;
     private ProjectStatus status;
     private BigDecimal hourlyRate;
     private String currency;
